@@ -5,13 +5,20 @@ import { ZodError } from 'zod';
 import { env } from './config/env.js';
 import { SessionService, SessionData } from './modules/auth/session.service.js';
 import { createTenantContext, TenantContext } from './db/connection.js';
+import { obligationRoutes } from './modules/obligations/obligation.routes.js';
+import { authRoutes } from './modules/auth/auth.routes.js';
+import { dashboardRoutes } from './modules/dashboard/dashboard.routes.js';
 
 export interface AuthenticatedRequest extends FastifyRequest {
   session?: SessionData;
   tenant?: TenantContext;
 }
+export interface BuildServerOptions {
+  tenantContextFactory?: (organizationId: string) => TenantContext;
+}
 
-export function buildServer(): FastifyInstance {
+
+export function buildServer(options?: BuildServerOptions): FastifyInstance {
   const server = Fastify({
     logger: env.NODE_ENV !== 'test',
   });
@@ -29,12 +36,13 @@ export function buildServer(): FastifyInstance {
 
   // Global Error Handler
   server.setErrorHandler((error: Error, _request: FastifyRequest, reply: FastifyReply) => {
-    if (error instanceof ZodError) {
+    if (error.name === 'ZodError' || error instanceof ZodError) {
+      const zodErr = error as ZodError;
       return reply.status(400).send({
         statusCode: 400,
         error: 'Bad Request',
         message: 'Validation failed',
-        details: error.errors.map((e) => ({
+        details: zodErr.errors.map((e: { path: (string | number)[]; message: string }) => ({
           field: e.path.join('.'),
           message: e.message,
         })),
@@ -67,10 +75,17 @@ export function buildServer(): FastifyInstance {
       const session = SessionService.decryptSession(sessionCookie);
       if (session) {
         authReq.session = session;
-        authReq.tenant = createTenantContext(session.organizationId);
+        authReq.tenant = options?.tenantContextFactory
+          ? options.tenantContextFactory(session.organizationId)
+          : createTenantContext(session.organizationId);
       }
     }
   });
+  // Register API domain routes
+  server.register(obligationRoutes, { prefix: '/api/v1/obligations' });
+  server.register(authRoutes, { prefix: '/api/v1/auth' });
+  server.register(dashboardRoutes, { prefix: '/api/v1/dashboard' });
+
 
   return server;
 }

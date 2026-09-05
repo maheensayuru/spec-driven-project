@@ -20,6 +20,7 @@ Thumbs.db
 
 # Node / JS / TS
 node_modules/
+*.tsbuildinfo
 dist/
 build/
 coverage/
