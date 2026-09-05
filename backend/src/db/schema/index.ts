@@ -5,3 +5,4 @@ export * from './obligations.js';
 export * from './audit.js';
 export * from './documents.js';
 export * from './changes.js';
+export * from './entitlements.js';

@@ -5,6 +5,7 @@ import {
 } from '@renewalradar/shared';
 import { ObligationService } from './obligation.service.js';
 import { requirePermission } from '../auth/rbac.service.js';
+import { EntitlementService } from '../entitlements/entitlement.service.js';
 import { AuthenticatedRequest } from '../../server.js';
 import { z } from 'zod';
 
@@ -29,6 +30,19 @@ export async function obligationRoutes(server: FastifyInstance): Promise<void> {
   server.post('/', { preHandler: [requirePermission('obligations:create')] }, async (request: FastifyRequest, reply: FastifyReply) => {
     const authReq = request as AuthenticatedRequest;
     const validated = CreateObligationRequestSchema.parse(request.body);
+    // Quota Enforcement (FR-024 & FR-025)
+    const existing = await authReq.tenant!.obligations.list(1000);
+    const quota = EntitlementService.checkObligationQuota(existing.length, 'free');
+    if (!quota.allowed) {
+      return reply.status(403).send({
+        statusCode: 403,
+        error: 'Forbidden',
+        code: 'QUOTA_EXCEEDED',
+        message: quota.message,
+        suggestedTier: quota.suggestedTier,
+      });
+    }
+
 
     const obligation = await ObligationService.createObligation(
       authReq.tenant!,
