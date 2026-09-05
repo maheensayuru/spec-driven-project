@@ -5,7 +5,9 @@ import { obligations } from './obligations.js';
 import { users } from './users.js';
 
 export const documents = pgTable('documents', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   organizationId: uuid('organization_id')
     .notNull()
     .references(() => organizations.id, { onDelete: 'cascade' }),
@@ -23,7 +25,9 @@ export const documents = pgTable('documents', {
 });
 
 export const extractionStagings = pgTable('extraction_stagings', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   documentId: uuid('document_id')
     .notNull()
     .references(() => documents.id, { onDelete: 'cascade' }),

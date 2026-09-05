@@ -15,15 +15,18 @@ import {
 import { sql } from 'drizzle-orm';
 import { organizations } from './organizations.js';
 import { users } from './users.js';
+import { vendors } from './vendors.js';
 
 export const obligations = pgTable(
   'obligations',
   {
-    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     organizationId: uuid('organization_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
-    vendorId: uuid('vendor_id'),
+    vendorId: uuid('vendor_id').references(() => vendors.id, { onDelete: 'set null' }),
     title: varchar('title', { length: 255 }).notNull(),
     type: varchar('type', { length: 50 }).notNull(),
     status: varchar('status', { length: 50 }).notNull().default('active'),
@@ -38,7 +41,9 @@ export const obligations = pgTable(
     autoRenew: boolean('auto_renew').notNull().default(true),
     riskLevel: varchar('risk_level', { length: 20 }).notNull().default('low'),
     internalOwnerId: uuid('internal_owner_id').references(() => users.id, { onDelete: 'set null' }),
-    tags: jsonb('tags').notNull().default(sql`'[]'::jsonb`),
+    tags: jsonb('tags')
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     notes: text('notes'),
     version: integer('version').notNull().default(1),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),

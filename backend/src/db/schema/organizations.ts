@@ -2,7 +2,9 @@ import { pgTable, uuid, varchar, char, timestamp } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const organizations = pgTable('organizations', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   name: varchar('name', { length: 255 }).notNull(),
   slug: varchar('slug', { length: 100 }).notNull().unique(),
   defaultCurrency: char('default_currency', { length: 3 }).notNull().default('USD'),

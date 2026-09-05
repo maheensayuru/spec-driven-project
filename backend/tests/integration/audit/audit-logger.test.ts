@@ -32,11 +32,21 @@ describe('Audit Logging & Immutability (Constitution Principle VI & User Story 8
       tenantContextFactory: (organizationId: string) => ({
         organizationId,
         obligations: {
-          async findById() { return null; },
-          async list() { return []; },
-          async create() { throw new Error(); },
-          async update() { return null; },
-          async softDelete() { return null; },
+          async findById() {
+            return null;
+          },
+          async list() {
+            return [];
+          },
+          async create() {
+            throw new Error();
+          },
+          async update() {
+            return null;
+          },
+          async softDelete() {
+            return null;
+          },
         },
         audit: {
           async record() {

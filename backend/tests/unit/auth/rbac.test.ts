@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  hasPermission,
-  Permission,
-  Role,
-} from '../../../src/modules/auth/rbac.service.js';
+import { hasPermission, Permission, Role } from '../../../src/modules/auth/rbac.service.js';
 
 describe('Role-Based Access Control (Constitution Principle II & FR-003)', () => {
   const allPermissions: Permission[] = [

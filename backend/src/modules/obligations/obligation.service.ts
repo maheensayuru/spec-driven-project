@@ -1,16 +1,30 @@
 import {
   CreateObligationRequest,
   ListObligationsQuery,
-  ObligationType,
   BillingFrequency,
 } from '@renewalradar/shared';
-import { calculateCancellationDeadline, calculateNextRenewalDate } from './deadline.calculator.js';
+import {
+  calculateCancellationDeadline,
+  calculateNextRenewalDate,
+  validateObligationDates,
+} from './deadline.calculator.js';
 import { TenantContext } from '../../db/connection.js';
 import { Obligation } from '../../db/schema/obligations.js';
 
 export interface ObligationWithVendor extends Obligation {
   vendorName?: string;
 }
+
+const VALID_TRANSITIONS: Record<string, readonly string[]> = {
+  draft: ['active', 'archived'],
+  active: ['under_review', 'notice_given', 'renewed', 'expired', 'terminated', 'archived'],
+  under_review: ['active', 'notice_given', 'renewed', 'terminated', 'archived'],
+  notice_given: ['terminated', 'renewed', 'archived'],
+  renewed: ['active', 'archived'],
+  expired: ['archived', 'renewed'],
+  terminated: ['archived'],
+  archived: [], // Terminal state
+};
 
 export class ObligationService {
   /**
@@ -25,7 +39,9 @@ export class ObligationService {
     today.setUTCHours(0, 0, 0, 0);
 
     const deadline = new Date(cancellationDeadlineStr + 'T00:00:00Z');
-    const daysToDeadline = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const daysToDeadline = Math.ceil(
+      (deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+    );
 
     if (daysToDeadline <= 7 || (daysToDeadline <= 14 && amount >= 10000)) {
       return 'critical';
@@ -52,6 +68,13 @@ export class ObligationService {
     input: CreateObligationRequest,
     actorId?: string,
   ): Promise<Obligation> {
+    // Validate date relationship constraints (startDate <= renewalDate <= expirationDate)
+    validateObligationDates({
+      startDate: input.startDate,
+      renewalDate: input.renewalDate,
+      expirationDate: input.expirationDate,
+    });
+
     const cancellationDeadline = calculateCancellationDeadline(
       input.renewalDate,
       input.noticePeriodDays,
@@ -77,9 +100,8 @@ export class ObligationService {
       autoRenew: input.autoRenew,
       riskLevel,
       internalOwnerId: input.internalOwnerId,
-      tags: input.tags,
+      status: input.status ?? 'active',
       notes: input.notes,
-      status: 'active',
       version: 1,
     });
 
@@ -89,6 +111,46 @@ export class ObligationService {
     });
 
     return obligation;
+  }
+
+  /**
+   * Transitions an obligation from its current lifecycle state to a new state.
+   * Enforces the approved lifecycle: Draft -> Active -> Renewed -> Archived (T015).
+   */
+  static async transitionStatus(
+    tenant: TenantContext,
+    id: string,
+    newStatus: string,
+    actorId?: string,
+  ): Promise<Obligation> {
+    const existing = await tenant.obligations.findById(id);
+    if (!existing) {
+      throw new Error('Obligation not found');
+    }
+
+    const currentStatus = existing.status;
+    const allowed = VALID_TRANSITIONS[currentStatus] ?? [];
+
+    if (!allowed.includes(newStatus)) {
+      throw new Error(`Invalid status transition from '${currentStatus}' to '${newStatus}'`);
+    }
+
+    const updated = await tenant.obligations.update(id, {
+      status: newStatus,
+      version: existing.version + 1,
+    });
+
+    if (!updated) {
+      throw new Error('Failed to update obligation status');
+    }
+
+    await tenant.audit.record('obligation', id, 'status_transitioned', {
+      actorId,
+      beforeState: { status: currentStatus },
+      afterState: { status: newStatus },
+    });
+
+    return updated;
   }
 
   /**
@@ -104,10 +166,7 @@ export class ObligationService {
   /**
    * Retrieves an obligation by ID.
    */
-  static async getObligationById(
-    tenant: TenantContext,
-    id: string,
-  ): Promise<Obligation | null> {
+  static async getObligationById(tenant: TenantContext, id: string): Promise<Obligation | null> {
     return tenant.obligations.findById(id);
   }
 
@@ -128,6 +187,13 @@ export class ObligationService {
     const renewalDate = updates.renewalDate ?? existing.renewalDate;
     const noticePeriod = updates.noticePeriodDays ?? existing.noticePeriodDays;
     const amount = updates.amount !== undefined ? updates.amount : Number(existing.amount);
+
+    // Validate date constraints if dates are updated
+    validateObligationDates({
+      startDate: updates.startDate ?? existing.startDate ?? undefined,
+      renewalDate,
+      expirationDate: updates.expirationDate ?? existing.expirationDate ?? undefined,
+    });
 
     const cancellationDeadline = calculateCancellationDeadline(renewalDate, noticePeriod);
     const riskLevel = this.calculateRiskLevel(renewalDate, cancellationDeadline, amount);

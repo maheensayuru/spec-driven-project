@@ -1,8 +1,4 @@
-import {
-  ExtractedFieldItem,
-  ObligationType,
-  ConfirmExtractionRequest,
-} from '@renewalradar/shared';
+import { ExtractedFieldItem, ObligationType, ConfirmExtractionRequest } from '@renewalradar/shared';
 import { StorageService, PresignedUploadResult } from './storage.service.js';
 import { TenantContext } from '../../db/connection.js';
 import { Obligation } from '../../db/schema/obligations.js';
@@ -91,6 +87,7 @@ export class IngestionService {
       {
         title: confirmedData.title,
         type: confirmedData.type,
+        status: 'active',
         vendorName: confirmedData.vendorName,
         amount: confirmedData.amount,
         currency: confirmedData.currency,

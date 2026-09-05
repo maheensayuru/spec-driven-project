@@ -1,8 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import {
-  PresignUploadRequestSchema,
-  ConfirmExtractionRequestSchema,
-} from '@renewalradar/shared';
+import { PresignUploadRequestSchema, ConfirmExtractionRequestSchema } from '@renewalradar/shared';
 import { IngestionService } from './ingestion.service.js';
 import { AuthenticatedRequest } from '../../server.js';
 import { z } from 'zod';
@@ -44,10 +41,7 @@ export async function ingestionRoutes(server: FastifyInstance): Promise<void> {
     const authReq = request as AuthenticatedRequest;
     const { id } = StagingParamsSchema.parse(request.params);
 
-    const staged = await IngestionService.getStagedExtraction(
-      authReq.session!.organizationId,
-      id,
-    );
+    const staged = await IngestionService.getStagedExtraction(authReq.session!.organizationId, id);
 
     if (!staged) {
       return reply.status(404).send({

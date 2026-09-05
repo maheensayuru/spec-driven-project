@@ -3,7 +3,9 @@ import { sql } from 'drizzle-orm';
 import { organizations } from './organizations.js';
 
 export const subscriptionEntitlements = pgTable('subscription_entitlements', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   organizationId: uuid('organization_id')
     .notNull()
     .unique()

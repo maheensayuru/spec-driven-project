@@ -1,9 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import {
-  RegisterRequestSchema,
-  LoginRequestSchema,
-  AuthSession,
-} from '@renewalradar/shared';
+import { RegisterRequestSchema, LoginRequestSchema, AuthSession } from '@renewalradar/shared';
 import { SessionService } from './session.service.js';
 import { AuthenticatedRequest } from '../../server.js';
 import { db } from '../../db/connection.js';
@@ -16,11 +12,12 @@ export async function authRoutes(server: FastifyInstance): Promise<void> {
     const input = RegisterRequestSchema.parse(request.body);
 
     const passwordHash = await SessionService.hashPassword(input.password);
-    const slug = input.organizationName
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '') || 'org';
+    const slug =
+      input.organizationName
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '') || 'org';
 
     // 1. Create User
     const [user] = await db

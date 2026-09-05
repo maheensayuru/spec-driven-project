@@ -20,10 +20,7 @@ export async function dashboardRoutes(server: FastifyInstance): Promise<void> {
     const authReq = request as AuthenticatedRequest;
     const reportingCurrency = 'USD'; // default reporting currency
 
-    const metrics = await DashboardService.aggregateDashboard(
-      authReq.tenant!,
-      reportingCurrency,
-    );
+    const metrics = await DashboardService.aggregateDashboard(authReq.tenant!, reportingCurrency);
 
     return metrics;
   });
