@@ -1,0 +1,76 @@
+import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
+import { ZodError } from 'zod';
+import { env } from './config/env.js';
+import { SessionService, SessionData } from './modules/auth/session.service.js';
+import { createTenantContext, TenantContext } from './db/connection.js';
+
+export interface AuthenticatedRequest extends FastifyRequest {
+  session?: SessionData;
+  tenant?: TenantContext;
+}
+
+export function buildServer(): FastifyInstance {
+  const server = Fastify({
+    logger: env.NODE_ENV !== 'test',
+  });
+
+  // Plugins
+  server.register(cors, {
+    origin: [env.FRONTEND_URL],
+    credentials: true,
+  });
+
+  server.register(cookie, {
+    secret: env.SESSION_SECRET,
+    hook: 'onRequest',
+  });
+
+  // Global Error Handler
+  server.setErrorHandler((error: Error, _request: FastifyRequest, reply: FastifyReply) => {
+    if (error instanceof ZodError) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Validation failed',
+        details: error.errors.map((e) => ({
+          field: e.path.join('.'),
+          message: e.message,
+        })),
+      });
+    }
+
+    server.log.error(error);
+    return reply.status(500).send({
+      statusCode: 500,
+      error: 'Internal Server Error',
+      message: 'An unexpected error occurred',
+    });
+  });
+
+  // Healthcheck endpoint
+  server.get('/health', async () => {
+    return {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      version: '0.1.0',
+    };
+  });
+
+  // Authentication & Tenant Context Hook
+  server.addHook('preHandler', async (request: FastifyRequest, _reply: FastifyReply) => {
+    const authReq = request as AuthenticatedRequest;
+    const sessionCookie = request.cookies['rr_session'];
+
+    if (sessionCookie) {
+      const session = SessionService.decryptSession(sessionCookie);
+      if (session) {
+        authReq.session = session;
+        authReq.tenant = createTenantContext(session.organizationId);
+      }
+    }
+  });
+
+  return server;
+}
