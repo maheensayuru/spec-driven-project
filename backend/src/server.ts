@@ -8,6 +8,7 @@ import { createTenantContext, TenantContext } from './db/connection.js';
 import { obligationRoutes } from './modules/obligations/obligation.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { dashboardRoutes } from './modules/dashboard/dashboard.routes.js';
+import { ingestionRoutes } from './modules/ingestion/ingestion.routes.js';
 
 export interface AuthenticatedRequest extends FastifyRequest {
   session?: SessionData;
@@ -85,6 +86,7 @@ export function buildServer(options?: BuildServerOptions): FastifyInstance {
   server.register(obligationRoutes, { prefix: '/api/v1/obligations' });
   server.register(authRoutes, { prefix: '/api/v1/auth' });
   server.register(dashboardRoutes, { prefix: '/api/v1/dashboard' });
+  server.register(ingestionRoutes, { prefix: '/api/v1/ingestion' });
 
 
   return server;
