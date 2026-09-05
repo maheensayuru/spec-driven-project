@@ -79,7 +79,9 @@ export class SessionService {
       const decipher = crypto.createDecipheriv(this.ALGORITHM, key, iv);
       decipher.setAuthTag(authTag);
 
-      const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+      const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString(
+        'utf8',
+      );
       const parsed = JSON.parse(decrypted) as unknown;
 
       if (

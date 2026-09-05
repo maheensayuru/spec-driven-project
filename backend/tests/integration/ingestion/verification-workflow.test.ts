@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { IngestionService, StagedExtractionRecord } from '../../../src/modules/ingestion/ingestion.service.js';
-import { TenantContext, TenantObligationsContext, TenantAuditContext } from '../../../src/db/connection.js';
+import {
+  IngestionService,
+  StagedExtractionRecord,
+} from '../../../src/modules/ingestion/ingestion.service.js';
+import {
+  TenantContext,
+  TenantObligationsContext,
+  TenantAuditContext,
+} from '../../../src/db/connection.js';
 import { Obligation } from '../../../src/db/schema/obligations.js';
 import { AuditEvent } from '../../../src/db/schema/audit.js';
 
@@ -15,7 +22,9 @@ function createMockTenantContext(organizationId: string): TenantContext {
     async list(): Promise<Obligation[]> {
       return Array.from(store.values());
     },
-    async create(data: Omit<Obligation, 'organizationId' | 'id' | 'createdAt' | 'updatedAt'>): Promise<Obligation> {
+    async create(
+      data: Omit<Obligation, 'organizationId' | 'id' | 'createdAt' | 'updatedAt'>,
+    ): Promise<Obligation> {
       const id = `obl-${Date.now()}`;
       const record = {
         ...data,
@@ -28,7 +37,10 @@ function createMockTenantContext(organizationId: string): TenantContext {
       store.set(id, record);
       return record;
     },
-    async update(id: string, data: Partial<Omit<Obligation, 'id' | 'organizationId'>>): Promise<Obligation | null> {
+    async update(
+      id: string,
+      data: Partial<Omit<Obligation, 'id' | 'organizationId'>>,
+    ): Promise<Obligation | null> {
       const existing = store.get(id);
       if (!existing) return null;
       const updated = { ...existing, ...data, updatedAt: new Date() } as Obligation;
@@ -95,10 +107,25 @@ describe('Document Extraction & Human Verification Workflow (User Story 5)', () 
       status: 'pending_review',
       overallConfidence: 0.88,
       fields: [
-        { fieldName: 'title', extractedValue: 'GitHub Enterprise Subscription', confidence: 0.96, requiresReview: false },
+        {
+          fieldName: 'title',
+          extractedValue: 'GitHub Enterprise Subscription',
+          confidence: 0.96,
+          requiresReview: false,
+        },
         { fieldName: 'amount', extractedValue: 2500, confidence: 0.92, requiresReview: false },
-        { fieldName: 'renewalDate', extractedValue: '2026-12-01', confidence: 0.90, requiresReview: false },
-        { fieldName: 'noticePeriodDays', extractedValue: 30, confidence: 0.75, requiresReview: true }, // review flagged
+        {
+          fieldName: 'renewalDate',
+          extractedValue: '2026-12-01',
+          confidence: 0.9,
+          requiresReview: false,
+        },
+        {
+          fieldName: 'noticePeriodDays',
+          extractedValue: 30,
+          confidence: 0.75,
+          requiresReview: true,
+        }, // review flagged
       ],
       suggestedType: 'subscription',
       suggestedVendor: 'GitHub, Inc.',
@@ -113,7 +140,9 @@ describe('Document Extraction & Human Verification Workflow (User Story 5)', () 
     const retrieved = await IngestionService.getStagedExtraction(orgId, 'stage-1');
     expect(retrieved).not.toBeNull();
     expect(retrieved?.status).toBe('pending_review');
-    expect(retrieved?.fields.find((f) => f.fieldName === 'noticePeriodDays')?.requiresReview).toBe(true);
+    expect(retrieved?.fields.find((f) => f.fieldName === 'noticePeriodDays')?.requiresReview).toBe(
+      true,
+    );
 
     // 3. User reviews and corrects the amount from 2500 to 2600 and confirms
     const confirmedObligation = await IngestionService.confirmExtraction(

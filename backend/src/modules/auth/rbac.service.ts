@@ -32,14 +32,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'org:invite',
     'audit:read',
   ],
-  member: [
-    'obligations:read',
-    'obligations:create',
-    'obligations:update',
-  ],
-  viewer: [
-    'obligations:read',
-  ],
+  member: ['obligations:read', 'obligations:create', 'obligations:update'],
+  viewer: ['obligations:read'],
 };
 
 export function hasPermission(role: Role, permission: Permission): boolean {

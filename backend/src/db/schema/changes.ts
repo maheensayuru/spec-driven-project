@@ -5,7 +5,9 @@ import { obligations } from './obligations.js';
 import { documents } from './documents.js';
 
 export const contractChangeDiffs = pgTable('contract_change_diffs', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   organizationId: uuid('organization_id')
     .notNull()
     .references(() => organizations.id, { onDelete: 'cascade' }),
@@ -16,8 +18,12 @@ export const contractChangeDiffs = pgTable('contract_change_diffs', {
   previousState: jsonb('previous_state').notNull(),
   newState: jsonb('new_state').notNull(),
   priceDelta: numeric('price_delta', { precision: 15, scale: 2 }).notNull().default('0.00'),
-  pricePercentChange: numeric('price_percent_change', { precision: 6, scale: 2 }).notNull().default('0.00'),
-  warnings: jsonb('warnings').notNull().default(sql`'[]'::jsonb`),
+  pricePercentChange: numeric('price_percent_change', { precision: 6, scale: 2 })
+    .notNull()
+    .default('0.00'),
+  warnings: jsonb('warnings')
+    .notNull()
+    .default(sql`'[]'::jsonb`),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -55,7 +55,9 @@ export class StorageService {
   /**
    * Validates file content by checking binary magic byte signatures, preventing MIME spoofing.
    */
-  static validateMagicBytes(buffer: Buffer): 'application/pdf' | 'image/png' | 'image/jpeg' | 'image/tiff' | null {
+  static validateMagicBytes(
+    buffer: Buffer,
+  ): 'application/pdf' | 'image/png' | 'image/jpeg' | 'image/tiff' | null {
     if (buffer.length < 4) {
       return null;
     }

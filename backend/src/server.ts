@@ -19,7 +19,6 @@ export interface BuildServerOptions {
   tenantContextFactory?: (organizationId: string) => TenantContext;
 }
 
-
 export function buildServer(options?: BuildServerOptions): FastifyInstance {
   const server = Fastify({
     logger: env.NODE_ENV !== 'test',
@@ -89,7 +88,6 @@ export function buildServer(options?: BuildServerOptions): FastifyInstance {
   server.register(dashboardRoutes, { prefix: '/api/v1/dashboard' });
   server.register(ingestionRoutes, { prefix: '/api/v1/ingestion' });
   server.register(auditRoutes, { prefix: '/api/v1/audit' });
-
 
   return server;
 }

@@ -44,7 +44,11 @@ export class DeadlineScannerService {
   static evaluateObligation(
     obligation: Obligation,
     referenceDateStr?: string,
-  ): { milestone: Milestone; priority: 'critical' | 'high' | 'medium' | 'low'; escalateToAdmins: boolean } | null {
+  ): {
+    milestone: Milestone;
+    priority: 'critical' | 'high' | 'medium' | 'low';
+    escalateToAdmins: boolean;
+  } | null {
     if (obligation.status !== 'active' || obligation.deletedAt) {
       return null;
     }
@@ -53,7 +57,9 @@ export class DeadlineScannerService {
     refDate.setUTCHours(0, 0, 0, 0);
 
     const deadline = new Date(obligation.cancellationDeadline + 'T00:00:00Z');
-    const daysToDeadline = Math.round((deadline.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24));
+    const daysToDeadline = Math.round(
+      (deadline.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24),
+    );
 
     if (daysToDeadline < 0) {
       return {
@@ -68,8 +74,13 @@ export class DeadlineScannerService {
     if (milestone) {
       const isUrgent = daysToDeadline <= 7;
       const isHighValue = Number(obligation.amount) >= 10000;
-      const priority = isUrgent || (daysToDeadline <= 14 && isHighValue) ? 'critical' : daysToDeadline <= 30 ? 'high' : 'medium';
-      
+      const priority =
+        isUrgent || (daysToDeadline <= 14 && isHighValue)
+          ? 'critical'
+          : daysToDeadline <= 30
+            ? 'high'
+            : 'medium';
+
       // Tiered escalation (Clarification 1): escalate if <= 3 days or critical
       const escalateToAdmins = daysToDeadline <= 3;
 

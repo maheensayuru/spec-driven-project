@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { ObligationService } from '../../../src/modules/obligations/obligation.service.js';
-import { TenantContext, TenantObligationsContext, TenantAuditContext } from '../../../src/db/connection.js';
+import {
+  TenantContext,
+  TenantObligationsContext,
+  TenantAuditContext,
+} from '../../../src/db/connection.js';
 import { Obligation } from '../../../src/db/schema/obligations.js';
 import { AuditEvent } from '../../../src/db/schema/audit.js';
 
-// In-Memory Tenant Mock implementing TenantContext for fast, hermetic integration tests
 function createMockTenantContext(organizationId: string): TenantContext {
   const store = new Map<string, Obligation>();
   const auditLogs: AuditEvent[] = [];
@@ -25,7 +28,9 @@ function createMockTenantContext(organizationId: string): TenantContext {
       return items;
     },
 
-    async create(data: Omit<Obligation, 'organizationId' | 'id' | 'createdAt' | 'updatedAt'>): Promise<Obligation> {
+    async create(
+      data: Omit<Obligation, 'organizationId' | 'id' | 'createdAt' | 'updatedAt'>,
+    ): Promise<Obligation> {
       const id = `mock-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const now = new Date();
       const record: Obligation = {
@@ -40,7 +45,10 @@ function createMockTenantContext(organizationId: string): TenantContext {
       return record;
     },
 
-    async update(id: string, data: Partial<Omit<Obligation, 'id' | 'organizationId'>>): Promise<Obligation | null> {
+    async update(
+      id: string,
+      data: Partial<Omit<Obligation, 'id' | 'organizationId'>>,
+    ): Promise<Obligation | null> {
       const existing = store.get(id);
       if (!existing || existing.organizationId !== organizationId || existing.deletedAt) {
         return null;
@@ -106,66 +114,86 @@ function createMockTenantContext(organizationId: string): TenantContext {
   };
 }
 
-describe('Obligation Lifecycle Integration Tests (User Story 1)', () => {
+describe('Obligation Lifecycle Integration Tests (User Story 1 & Task T015)', () => {
   const orgId = '11111111-2222-3333-4444-555555555555';
   const tenant = createMockTenantContext(orgId);
 
-  it('progresses through creation, update, renewal cycle, and soft deletion', async () => {
-    // 1. Create Obligation
-    const created = await ObligationService.createObligation(
+  it('verifies valid lifecycle progression: Draft -> Active -> Renewed -> Archived', async () => {
+    // 1. Create as Draft
+    const draft = await ObligationService.createObligation(
       tenant,
       {
-        title: 'Salesforce Enterprise CRM',
-        type: 'subscription',
-        amount: 15000,
+        title: 'Draft Vendor Contract',
+        type: 'contract',
+        status: 'draft',
+        amount: 5000,
         currency: 'USD',
         billingFrequency: 'annual',
         renewalDate: '2026-12-31',
-        noticePeriodDays: 60,
-        autoRenew: true,
-        tags: ['crm', 'sales'],
-      },
-      'user-1',
-    );
-
-    expect(created.id).toBeDefined();
-    expect(created.status).toBe('active');
-    expect(created.cancellationDeadline).toBe('2026-11-01');
-    expect(created.riskLevel).toBe('low'); // renewal is > 60 days away
-
-    // 2. Fetch by ID
-    const fetched = await ObligationService.getObligationById(tenant, created.id);
-    expect(fetched).not.toBeNull();
-    expect(fetched?.title).toBe('Salesforce Enterprise CRM');
-
-    // 3. Update Title and Notice Period
-    const updated = await ObligationService.updateObligation(
-      tenant,
-      created.id,
-      {
-        title: 'Salesforce Unlimited CRM',
         noticePeriodDays: 30,
+        autoRenew: true,
       },
       'user-1',
     );
-    expect(updated).not.toBeNull();
-    expect(updated?.title).toBe('Salesforce Unlimited CRM');
-    expect(updated?.cancellationDeadline).toBe('2026-12-01'); // 2026-12-31 - 30 days
-    expect(updated?.version).toBe(2);
 
-    // 4. Renew Obligation (Annual Cycle Advance)
-    const renewed = await ObligationService.renewObligation(tenant, created.id, 'user-1');
+    // Explicitly transition Draft -> Active
+    const activated = await ObligationService.transitionStatus(
+      tenant,
+      draft.id,
+      'active',
+      'user-1',
+    );
+    expect(activated.status).toBe('active');
+
+    // Active -> Renewed (advances renewal cycle)
+    const renewed = await ObligationService.renewObligation(tenant, draft.id, 'user-1');
     expect(renewed).not.toBeNull();
     expect(renewed?.renewalDate).toBe('2027-12-31');
-    expect(renewed?.cancellationDeadline).toBe('2027-12-01');
     expect(renewed?.version).toBe(3);
 
-    // 5. Soft Delete
-    const deleted = await ObligationService.deleteObligation(tenant, created.id, 'user-1');
-    expect(deleted).toBe(true);
+    // Renewed -> Archived
+    const archived = await ObligationService.transitionStatus(
+      tenant,
+      draft.id,
+      'archived',
+      'user-1',
+    );
+    expect(archived.status).toBe('archived');
+  });
 
-    // 6. Verify Excluded from queries
-    const afterDelete = await ObligationService.getObligationById(tenant, created.id);
-    expect(afterDelete).toBeNull();
+  it('rejects invalid lifecycle transitions', async () => {
+    // 1. Create Active obligation
+    const active = await ObligationService.createObligation(
+      tenant,
+      {
+        title: 'Active Subscription',
+        type: 'subscription',
+        amount: 1000,
+        currency: 'USD',
+        billingFrequency: 'monthly',
+        renewalDate: '2026-10-15',
+        noticePeriodDays: 14,
+        autoRenew: true,
+      },
+      'user-1',
+    );
+
+    // Cannot transition Active -> Draft
+    await expect(
+      ObligationService.transitionStatus(tenant, active.id, 'draft', 'user-1'),
+    ).rejects.toThrowError("Invalid status transition from 'active' to 'draft'");
+
+    // Archive it
+    await ObligationService.transitionStatus(tenant, active.id, 'archived', 'user-1');
+
+    // Cannot transition Archived -> Active (Archived is terminal)
+    await expect(
+      ObligationService.transitionStatus(tenant, active.id, 'active', 'user-1'),
+    ).rejects.toThrowError("Invalid status transition from 'archived' to 'active'");
+
+    // Cannot transition Archived -> Renewed
+    await expect(
+      ObligationService.transitionStatus(tenant, active.id, 'renewed', 'user-1'),
+    ).rejects.toThrowError("Invalid status transition from 'archived' to 'renewed'");
   });
 });

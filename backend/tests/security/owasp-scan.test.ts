@@ -22,8 +22,12 @@ describe('OWASP Top 10 Security Audit (Constitution Security Standards & Task T0
       tenantContextFactory: (organizationId: string) => ({
         organizationId,
         obligations: {
-          async findById() { return null; },
-          async list() { return []; },
+          async findById() {
+            return null;
+          },
+          async list() {
+            return [];
+          },
           async create(data) {
             // Emulates safe parameterized insertion
             return {
@@ -52,8 +56,12 @@ describe('OWASP Top 10 Security Audit (Constitution Security Standards & Task T0
               updatedAt: new Date(),
             };
           },
-          async update() { return null; },
-          async softDelete() { return null; },
+          async update() {
+            return null;
+          },
+          async softDelete() {
+            return null;
+          },
         },
         audit: {
           async record() {

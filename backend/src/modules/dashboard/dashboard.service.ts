@@ -58,11 +58,15 @@ export class DashboardService {
 
       // Notice deadline days remaining
       const cancelDate = new Date(obl.cancellationDeadline + 'T00:00:00Z');
-      const daysToNotice = Math.ceil((cancelDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const daysToNotice = Math.ceil(
+        (cancelDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+      );
 
       // Renewal days remaining
       const renewDate = new Date(obl.renewalDate + 'T00:00:00Z');
-      const daysToRenewal = Math.ceil((renewDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const daysToRenewal = Math.ceil(
+        (renewDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+      );
 
       if (daysToNotice <= 30 && daysToNotice >= 0) {
         imminentNoticeCount++;
@@ -104,11 +108,29 @@ export class DashboardService {
         organizationId: o.organizationId,
         vendorId: o.vendorId,
         title: o.title,
-        type: o.type as 'contract' | 'subscription' | 'license' | 'permit' | 'insurance' | 'warranty' | 'vendor_agreement' | 'lease' | 'other',
-        status: o.status as 'draft' | 'active' | 'under_review' | 'notice_given' | 'renewed' | 'expired' | 'terminated' | 'archived',
+        type: o.type as
+          | 'contract'
+          | 'subscription'
+          | 'license'
+          | 'permit'
+          | 'insurance'
+          | 'warranty'
+          | 'vendor_agreement'
+          | 'lease'
+          | 'other',
+        status: o.status as
+          | 'draft'
+          | 'active'
+          | 'under_review'
+          | 'notice_given'
+          | 'renewed'
+          | 'expired'
+          | 'terminated'
+          | 'archived',
         amount: Number(o.amount),
         currency: o.currency,
-        billingFrequency: o.billingFrequency as 'monthly' | 'quarterly' | 'annual' | 'biennial' | 'one_time',
+        billingFrequency: o.billingFrequency as
+          'monthly' | 'quarterly' | 'annual' | 'biennial' | 'one_time',
         startDate: o.startDate ?? undefined,
         renewalDate: o.renewalDate,
         expirationDate: o.expirationDate ?? undefined,
@@ -126,5 +148,5 @@ export class DashboardService {
       spendByCurrencyBreakdown: spendByCurrency,
       spendByTypeBreakdown: spendByType,
     };
-}
+  }
 }

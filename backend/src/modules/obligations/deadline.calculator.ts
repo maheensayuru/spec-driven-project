@@ -1,5 +1,58 @@
 export type BillingFrequency = 'monthly' | 'quarterly' | 'annual' | 'biennial' | 'one_time';
 
+export interface ObligationDatesInput {
+  startDate?: string;
+  renewalDate: string;
+  expirationDate?: string;
+}
+
+/**
+ * Validates that a string is a strictly valid YYYY-MM-DD calendar date.
+ */
+function parseAndValidateDate(dateStr: string, fieldName: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) {
+    throw new Error(`Invalid ${fieldName} format (expected YYYY-MM-DD)`);
+  }
+
+  const year = parseInt(match[1]!, 10);
+  const month = parseInt(match[2]!, 10) - 1; // 0-indexed
+  const day = parseInt(match[3]!, 10);
+
+  const date = new Date(Date.UTC(year, month, day));
+
+  // Calendar validity check: year, month, day must round-trip exactly
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month || date.getUTCDate() !== day) {
+    throw new Error(
+      `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} is not a valid calendar date`,
+    );
+  }
+
+  return date;
+}
+
+/**
+ * Validates relationship constraints between obligation dates:
+ * startDate <= renewalDate <= expirationDate
+ */
+export function validateObligationDates(input: ObligationDatesInput): void {
+  const renewalDate = parseAndValidateDate(input.renewalDate, 'renewal date');
+
+  if (input.startDate) {
+    const startDate = parseAndValidateDate(input.startDate, 'start date');
+    if (startDate.getTime() > renewalDate.getTime()) {
+      throw new Error('Start date cannot be after renewal date');
+    }
+  }
+
+  if (input.expirationDate) {
+    const expirationDate = parseAndValidateDate(input.expirationDate, 'expiration date');
+    if (renewalDate.getTime() > expirationDate.getTime()) {
+      throw new Error('Renewal date cannot be after expiration date');
+    }
+  }
+}
+
 /**
  * Calculates the cancellation deadline: D_cancellation = D_renewal - N_notice.
  * Uses UTC date arithmetic to avoid daylight savings / timezone drift.
@@ -12,13 +65,11 @@ export function calculateCancellationDeadline(
     throw new Error('Notice period days must be non-negative');
   }
 
-  const [yearStr, monthStr, dayStr] = renewalDateStr.split('-');
-  const year = parseInt(yearStr ?? '0', 10);
-  const month = parseInt(monthStr ?? '1', 10) - 1; // 0-indexed
-  const day = parseInt(dayStr ?? '1', 10);
+  if (noticePeriodDays > 365) {
+    throw new Error('Notice period days cannot exceed 365 days');
+  }
 
-  // Use UTC
-  const renewalDate = new Date(Date.UTC(year, month, day));
+  const renewalDate = parseAndValidateDate(renewalDateStr, 'renewal date');
   const deadlineMs = renewalDate.getTime() - noticePeriodDays * 24 * 60 * 60 * 1000;
   const deadlineDate = new Date(deadlineMs);
 
@@ -37,10 +88,10 @@ export function calculateNextRenewalDate(
   currentRenewalDateStr: string,
   frequency: BillingFrequency,
 ): string {
-  const [yearStr, monthStr, dayStr] = currentRenewalDateStr.split('-');
-  let year = parseInt(yearStr ?? '0', 10);
-  let month = parseInt(monthStr ?? '1', 10) - 1; // 0-indexed
-  const targetDay = parseInt(dayStr ?? '1', 10);
+  const currentDate = parseAndValidateDate(currentRenewalDateStr, 'renewal date');
+  let year = currentDate.getUTCFullYear();
+  let month = currentDate.getUTCMonth();
+  const targetDay = currentDate.getUTCDate();
 
   switch (frequency) {
     case 'monthly':
@@ -59,14 +110,12 @@ export function calculateNextRenewalDate(
       return currentRenewalDateStr;
   }
 
-  // Adjust year if month exceeded 11
   while (month > 11) {
     year += 1;
     month -= 12;
   }
 
   // Calculate days in the resulting month
-  // Day 0 of next month gives the last day of target month
   const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
   const finalDay = Math.min(targetDay, lastDayOfMonth);
 

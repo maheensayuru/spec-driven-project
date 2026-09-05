@@ -5,7 +5,8 @@
   "description": "RenewalRadar - Continuous B2B Contract & Obligation Monitoring Platform",
   "workspaces": [
     "shared",
-    "backend"
+    "backend",
+    "frontend"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

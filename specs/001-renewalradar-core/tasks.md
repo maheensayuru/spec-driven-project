@@ -46,17 +46,17 @@ description: "Task list for RenewalRadar Core Platform implementation"
 **Independent Test**: User creates an obligation manually, system verifies date constraints, computes cancellation deadline, and allows filtering/searching.
 
 ### Tests for User Story 1 (Write Tests FIRST, Verify Fails)
-- [ ] T013 [P] [US1] Unit test for deterministic cancellation deadline arithmetic ($D_{cancellation} = D_{renewal} - N_{notice}$) and leap year boundaries in `backend/tests/unit/obligations/deadline.test.ts`
-- [ ] T014 [P] [US1] Contract test for `POST /api/v1/obligations` and `GET /api/v1/obligations` in `backend/tests/contract/obligations.test.ts`
-- [ ] T015 [P] [US1] Integration test for obligation lifecycle transitions (`Draft` → `Active` → `Renewed` → `Archived`) in `backend/tests/integration/obligations/lifecycle.test.ts`
+- [x] T013 [P] [US1] Unit test for deterministic cancellation deadline arithmetic ($D_{cancellation} = D_{renewal} - N_{notice}$) and leap year boundaries in `backend/tests/unit/obligations/deadline.test.ts`
+- [x] T014 [P] [US1] Contract test for `POST /api/v1/obligations` and `GET /api/v1/obligations` in `backend/tests/contract/obligations.test.ts`
+- [x] T015 [P] [US1] Integration test for obligation lifecycle transitions (`Draft` → `Active` → `Renewed` → `Archived`) in `backend/tests/integration/obligations/lifecycle.test.ts`
 
 ### Implementation for User Story 1
-- [ ] T016 [P] [US1] Create Drizzle schema for `obligations` and `vendors` in `backend/src/db/schema/obligations.ts` and `backend/src/db/schema/vendors.ts`
-- [ ] T017 [US1] Implement `ObligationRepository` enforcing tenant `organization_id` scoping on all queries in `backend/src/modules/obligations/obligation.repository.ts`
-- [ ] T018 [US1] Implement `ObligationService` with validation, deadline computation, and lifecycle transitions in `backend/src/modules/obligations/obligation.service.ts`
-- [ ] T019 [US1] Implement Fastify API routes for obligation CRUD and search filtering in `backend/src/modules/obligations/obligation.routes.ts`
-- [ ] T020 [P] [US1] Build responsive Obligation Form component with validation in `frontend/src/components/obligations/ObligationForm.tsx`
-- [ ] T021 [US1] Build Obligation List & Filter View with search, status chips, and risk badges in `frontend/src/app/(dashboard)/obligations/page.tsx`
+- [x] T016 [P] [US1] Create Drizzle schema for `obligations` and `vendors` in `backend/src/db/schema/obligations.ts` and `backend/src/db/schema/vendors.ts`
+- [x] T017 [US1] Implement `ObligationRepository` enforcing tenant `organization_id` scoping on all queries in `backend/src/modules/obligations/obligation.repository.ts`
+- [x] T018 [US1] Implement `ObligationService` with validation, deadline computation, and lifecycle transitions in `backend/src/modules/obligations/obligation.service.ts`
+- [x] T019 [US1] Implement Fastify API routes for obligation CRUD and search filtering in `backend/src/modules/obligations/obligation.routes.ts`
+- [x] T020 [P] [US1] Build responsive Obligation Form component with validation in `frontend/src/components/obligations/ObligationForm.tsx`
+- [x] T021 [US1] Build Obligation List & Filter View with search, status chips, and risk badges in `frontend/src/app/(dashboard)/obligations/page.tsx`
 
 **Checkpoint**: User Story 1 functional and independently testable.
 

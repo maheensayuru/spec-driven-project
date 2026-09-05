@@ -48,7 +48,9 @@ export class ContractChangeService {
 
     if (priceDelta >= 50 || (pricePercentChange >= 2.0 && priceDelta > 0)) {
       hasSignificantChanges = true;
-      warnings.push(`Price increase detected: +$${priceDelta} (+${pricePercentChange.toFixed(1)}%)`);
+      warnings.push(
+        `Price increase detected: +$${priceDelta} (+${pricePercentChange.toFixed(1)}%)`,
+      );
     }
 
     // 2. Notice Period Evaluation (Reduction is a legal/cancellation risk)
@@ -64,7 +66,9 @@ export class ContractChangeService {
     const autoRenewChanged = incoming.autoRenew !== previous.autoRenew;
     if (autoRenewChanged) {
       hasSignificantChanges = true;
-      warnings.push(`Auto-renewal status changed from ${previous.autoRenew} to ${incoming.autoRenew}`);
+      warnings.push(
+        `Auto-renewal status changed from ${previous.autoRenew} to ${incoming.autoRenew}`,
+      );
     }
 
     return {
