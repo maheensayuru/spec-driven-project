@@ -4,13 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -b"
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000"
   },
   "dependencies": {
     "@renewalradar/shared": "*",
+    "@tailwindcss/postcss": "^4.3.3",
+    "autoprefixer": "^10.5.5",
     "lucide-react": "^0.441.0",
+    "next": "^14.2.35",
+    "postcss": "^8.5.28",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
