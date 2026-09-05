@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-specs:
+    name: Validate Specs & Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify specs directory structure
+        run: |
+          test -f specs/000-charter.md || (echo "Missing specs/000-charter.md" && exit 1)
+          test -f specs/001-architecture.md || (echo "Missing specs/001-architecture.md" && exit 1)
+          test -f specs/features/template.md || (echo "Missing specs/features/template.md" && exit 1)
+          echo "Spec structure verified."
+
+      - name: Check for uncommitted secrets or tokens
+        run: |
+          if git grep -I -E "ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{82}" .; then
+            echo "Error: Potential GitHub token detected in repository."
+            exit 1
+          fi
