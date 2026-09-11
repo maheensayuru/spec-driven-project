@@ -69,15 +69,15 @@ description: "Task list for RenewalRadar Core Platform implementation"
 **Independent Test**: Admin invites Viewer; Viewer reads obligations but is blocked (403) from mutations; cross-tenant query returns 404.
 
 ### Tests for User Story 2 (Write Tests FIRST, Verify Fails)
-- [ ] T022 [P] [US2] Unit test for RBAC permission matrix across Owner, Admin, Member, and Viewer in `backend/tests/unit/auth/rbac.test.ts`
-- [ ] T023 [P] [US2] Security integration test asserting complete cross-tenant isolation and 404 response on foreign tenant IDs in `backend/tests/integration/auth/tenant-isolation.test.ts`
-- [ ] T024 [P] [US2] Contract test for invitation dispatch and acceptance in `backend/tests/contract/invitations.test.ts`
+- [x] T022 [P] [US2] Unit test for RBAC permission matrix across Owner, Admin, Member, and Viewer in `backend/tests/unit/auth/rbac.test.ts`
+- [x] T023 [P] [US2] Security integration test asserting complete cross-tenant isolation and 404 response on foreign tenant IDs in `backend/tests/integration/auth/tenant-isolation.test.ts`
+- [x] T024 [P] [US2] Contract test for invitation dispatch and acceptance in `backend/tests/contract/invitations.test.ts`
 
 ### Implementation for User Story 2
-- [ ] T025 [US2] Implement RBAC authorization middleware in `backend/src/modules/auth/rbac.middleware.ts`
-- [ ] T026 [US2] Implement Organization and Member services (invitations, role updates, member removal) in `backend/src/modules/organizations/organization.service.ts`
-- [ ] T027 [US2] Implement Organization API routes in `backend/src/modules/organizations/organization.routes.ts`
-- [ ] T028 [P] [US2] Build Team Management & Invite Modal in `frontend/src/components/organizations/TeamSettings.tsx`
+- [x] T025 [US2] Implement RBAC authorization middleware in `backend/src/modules/auth/rbac.middleware.ts`
+- [x] T026 [US2] Implement Organization and Member services (invitations, role updates, member removal) in `backend/src/modules/organizations/organization.service.ts`
+- [x] T027 [US2] Implement Organization API routes in `backend/src/modules/organizations/organization.routes.ts`
+- [x] T028 [P] [US2] Build Team Management & Invite Modal in `frontend/src/components/organizations/TeamSettings.tsx`
 
 **Checkpoint**: User Stories 1 and 2 fully functional with verified tenant isolation.
 

@@ -22,15 +22,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </span>
             </div>
 
-            <nav className="flex items-center space-x-4">
+            <nav className="flex items-center space-x-5">
               <a
                 href="/obligations"
                 className="text-sm font-medium text-slate-700 hover:text-indigo-600 transition-colors"
               >
                 Obligations
               </a>
-              <span className="text-xs text-slate-400">|</span>
-              <span className="text-xs font-medium text-slate-500">Acme Logistics (Demo)</span>
+              <a
+                href="/settings/team"
+                className="text-sm font-medium text-slate-700 hover:text-indigo-600 transition-colors"
+              >
+                Team & Roles
+              </a>
+              <span className="text-xs text-slate-300">|</span>
+              <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
+                Acme Logistics (Demo)
+              </span>
             </nav>
           </div>
         </header>

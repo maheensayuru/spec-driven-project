@@ -10,6 +10,7 @@ import { authRoutes } from './modules/auth/auth.routes.js';
 import { dashboardRoutes } from './modules/dashboard/dashboard.routes.js';
 import { ingestionRoutes } from './modules/ingestion/ingestion.routes.js';
 import { auditRoutes } from './modules/audit/audit.routes.js';
+import { organizationRoutes } from './modules/organizations/organization.routes.js';
 
 export interface AuthenticatedRequest extends FastifyRequest {
   session?: SessionData;
@@ -88,6 +89,7 @@ export function buildServer(options?: BuildServerOptions): FastifyInstance {
   server.register(dashboardRoutes, { prefix: '/api/v1/dashboard' });
   server.register(ingestionRoutes, { prefix: '/api/v1/ingestion' });
   server.register(auditRoutes, { prefix: '/api/v1/audit' });
+  server.register(organizationRoutes, { prefix: '/api/v1/organizations' });
 
   return server;
 }

@@ -3,23 +3,111 @@ import { buildServer } from '../../../src/server.js';
 import { FastifyInstance } from 'fastify';
 import { SessionService } from '../../../src/modules/auth/session.service.js';
 
-describe('Multi-Tenant Isolation & Zero Trust (Constitution Principle II & SC-005)', () => {
+describe('Multi-Tenant Isolation & Zero Trust (Constitution Principle II & Task T023)', () => {
   let app: FastifyInstance;
   const orgA = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
   const orgB = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  const orgAObId = '11111111-1111-1111-1111-111111111111';
 
-  let orgASessionCookie: string;
-  let viewerSessionCookie: string;
+  let orgAAdminCookie: string;
+  let orgAViewerCookie: string;
+  let orgBAdminCookie: string;
 
   beforeAll(async () => {
+    // Org A Admin
+    const tokenAdminA = SessionService.encryptSession({
+      userId: 'user-a-admin',
+      organizationId: orgA,
+      role: 'admin',
+      email: 'admin@org-a.com',
+      createdAt: Date.now(),
+    });
+    orgAAdminCookie = `rr_session=${tokenAdminA}`;
+
+    // Org A Viewer
+    const tokenViewerA = SessionService.encryptSession({
+      userId: 'user-a-viewer',
+      organizationId: orgA,
+      role: 'viewer',
+      email: 'viewer@org-a.com',
+      createdAt: Date.now(),
+    });
+    orgAViewerCookie = `rr_session=${tokenViewerA}`;
+
+    // Org B Admin
+    const tokenAdminB = SessionService.encryptSession({
+      userId: 'user-b-admin',
+      organizationId: orgB,
+      role: 'admin',
+      email: 'admin@org-b.com',
+      createdAt: Date.now(),
+    });
+    orgBAdminCookie = `rr_session=${tokenAdminB}`;
+
     app = buildServer({
       tenantContextFactory: (organizationId: string) => ({
         organizationId,
         obligations: {
-          async findById() {
+          async findById(id: string) {
+            if (id === orgAObId && organizationId === orgA) {
+              return {
+                id: orgAObId,
+                organizationId: orgA,
+                vendorId: null,
+                title: 'Org A Confidential Contract',
+                type: 'contract',
+                status: 'active',
+                amount: '5000.00',
+                currency: 'USD',
+                billingFrequency: 'annual',
+                startDate: null,
+                renewalDate: '2026-12-31',
+                expirationDate: null,
+                noticePeriodDays: 30,
+                cancellationDeadline: '2026-12-01',
+                autoRenew: true,
+                riskLevel: 'low',
+                internalOwnerId: null,
+                tags: [],
+                notes: null,
+                version: 1,
+                deletedAt: null,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              };
+            }
             return null;
           },
           async list() {
+            if (organizationId === orgA) {
+              return [
+                {
+                  id: orgAObId,
+                  organizationId: orgA,
+                  vendorId: null,
+                  title: 'Org A Confidential Contract',
+                  type: 'contract',
+                  status: 'active',
+                  amount: '5000.00',
+                  currency: 'USD',
+                  billingFrequency: 'annual',
+                  startDate: null,
+                  renewalDate: '2026-12-31',
+                  expirationDate: null,
+                  noticePeriodDays: 30,
+                  cancellationDeadline: '2026-12-01',
+                  autoRenew: true,
+                  riskLevel: 'low',
+                  internalOwnerId: null,
+                  tags: [],
+                  notes: null,
+                  version: 1,
+                  deletedAt: null,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                },
+              ];
+            }
             return [];
           },
           async create() {
@@ -52,39 +140,32 @@ describe('Multi-Tenant Isolation & Zero Trust (Constitution Principle II & SC-00
       }),
     });
     await app.ready();
-
-    // Org A Admin
-    const tokenA = SessionService.encryptSession({
-      userId: 'user-a-1',
-      organizationId: orgA,
-      role: 'admin',
-      email: 'admin@org-a.com',
-      createdAt: Date.now(),
-    });
-    orgASessionCookie = `rr_session=${tokenA}`;
-
-    // Org A Viewer
-    const tokenViewer = SessionService.encryptSession({
-      userId: 'user-a-2',
-      organizationId: orgA,
-      role: 'viewer',
-      email: 'viewer@org-a.com',
-      createdAt: Date.now(),
-    });
-    viewerSessionCookie = `rr_session=${tokenViewer}`;
   });
 
   afterAll(async () => {
     await app.close();
   });
 
+  it('allows Viewer in Org A to read obligations (200 OK)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/obligations',
+      headers: { cookie: orgAViewerCookie },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.items.length).toBe(1);
+    expect(body.items[0].title).toBe('Org A Confidential Contract');
+  });
+
   it('rejects mutative requests from Viewer with 403 Forbidden', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/obligations',
-      headers: { cookie: viewerSessionCookie },
+      headers: { cookie: orgAViewerCookie },
       payload: {
-        title: 'Unauthorized Attempt',
+        title: 'Unauthorized Mutation Attempt',
         type: 'subscription',
         amount: 100,
         currency: 'USD',
@@ -100,12 +181,22 @@ describe('Multi-Tenant Isolation & Zero Trust (Constitution Principle II & SC-00
     expect(body.error).toBe('Forbidden');
   });
 
-  it('returns 404 (Not Found) when requesting an obligation belonging to another tenant', async () => {
+  it('returns 404 (Not Found) when Org B requests an obligation belonging to Org A', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/obligations/${orgAObId}`,
+      headers: { cookie: orgBAdminCookie },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 404 (Not Found) for non-existent resource ID to prevent enumeration', async () => {
     const foreignId = '99999999-9999-9999-9999-999999999999';
     const res = await app.inject({
       method: 'GET',
       url: `/api/v1/obligations/${foreignId}`,
-      headers: { cookie: orgASessionCookie },
+      headers: { cookie: orgAAdminCookie },
     });
 
     expect(res.statusCode).toBe(404);
