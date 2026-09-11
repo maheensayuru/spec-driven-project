@@ -14,7 +14,6 @@ export default function DashboardPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanNotice, setScanNotice] = useState<string | null>(null);
 
-  // Load dashboard metrics and obligations
   const fetchDashboardData = async () => {
     setIsLoading(true);
     setError(null);
@@ -149,36 +148,36 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-50 py-6 sm:py-8 px-3 sm:px-6 lg:px-8 overflow-x-hidden">
+      <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
         {/* Executive Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4">
           <div>
             <div className="flex items-center space-x-2">
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                 Executive Dashboard
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="px-2 py-0.5 rounded-full text-[11px] sm:text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 Live Monitoring Active
               </span>
             </div>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
               Real-time awareness of upcoming contract renewal dates, cancellation notice windows,
               and exposed spend.
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <button
               onClick={handleManualScan}
               disabled={isScanning}
-              className="inline-flex items-center px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50"
+              className="inline-flex items-center px-3 py-1.5 sm:px-4 sm:py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs sm:text-sm font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50"
             >
               {isScanning ? 'Scanning Deadlines...' : '⚡ Trigger Scanner Demo'}
             </button>
             <a
               href="/obligations"
-              className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
+              className="inline-flex items-center px-3 py-1.5 sm:px-4 sm:py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold rounded-lg shadow-sm transition-colors"
             >
               + Manage Obligations
             </a>
@@ -186,7 +185,7 @@ export default function DashboardPage() {
         </div>
 
         {scanNotice && (
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-900 flex items-center justify-between">
+          <div className="p-3 sm:p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-900 flex items-center justify-between">
             <span>✓ {scanNotice}</span>
             <button onClick={() => setScanNotice(null)} className="text-emerald-700 font-bold ml-4">
               ✕
@@ -200,7 +199,7 @@ export default function DashboardPage() {
         </section>
 
         {/* Section 2: Split Grid: Urgent Actions & Timeline */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
           <section>
             <UrgentActionsList items={metrics?.urgentActions} isLoading={isLoading} />
           </section>
