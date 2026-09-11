@@ -1,6 +1,7 @@
 import { DashboardMetricsResponse, UrgentActionItem } from '@renewalradar/shared';
 import { TenantContext } from '../../db/connection.js';
 import { Obligation } from '../../db/schema/obligations.js';
+import { RiskEvaluationService } from '../monitoring/risk.service.js';
 
 export class DashboardService {
   /**
@@ -76,8 +77,17 @@ export class DashboardService {
         imminentRenewalCount++;
       }
 
+      // Re-evaluate risk dynamically based on current date
+      const activeRisk = RiskEvaluationService.evaluate({
+        renewalDate: obl.renewalDate,
+        cancellationDeadline: obl.cancellationDeadline,
+        amount,
+        autoRenew: obl.autoRenew,
+        internalOwnerId: obl.internalOwnerId,
+      });
+
       // Populate urgent actions if notice is <= 30 days or risk is critical/high
-      if (daysToNotice <= 30 || obl.riskLevel === 'critical' || obl.riskLevel === 'high') {
+      if (daysToNotice <= 30 || activeRisk === 'critical' || activeRisk === 'high') {
         urgentActions.push({
           id: `act-${obl.id}`,
           obligationId: obl.id,
@@ -86,7 +96,7 @@ export class DashboardService {
           actionType: daysToNotice <= 14 ? 'notice_deadline_approaching' : 'renewal_approaching',
           dueDate: obl.cancellationDeadline,
           daysRemaining: daysToNotice,
-          riskLevel: obl.riskLevel as 'critical' | 'high' | 'medium' | 'low',
+          riskLevel: activeRisk,
           amount,
           currency: obl.currency,
         });
@@ -95,6 +105,7 @@ export class DashboardService {
 
     // Sort urgent actions by urgency (fewest days remaining first)
     urgentActions.sort((a, b) => a.daysRemaining - b.daysRemaining);
+
     return {
       totalActiveObligations: obligations.length,
       totalAnnualCommittedSpend: Math.round(totalAnnualCommittedSpend * 100) / 100,

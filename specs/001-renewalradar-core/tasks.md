@@ -113,15 +113,15 @@ description: "Task list for RenewalRadar Core Platform implementation"
 **Independent Test**: Load dashboard endpoint; verify response returns aggregated committed spend, imminent deadlines, and urgent action list in $< 350\text{ms}$.
 
 ### Tests for User Story 4 (Write Tests FIRST, Verify Fails)
-- [ ] T038 [P] [US4] Integration test for dashboard aggregation metrics and multi-currency spend conversion in `backend/tests/integration/dashboard/metrics.test.ts`
-- [ ] T039 [P] [US4] Performance benchmark test asserting p95 response time $< 350\text{ms}$ with 500 obligations in `backend/tests/performance/dashboard-latency.test.ts`
+- [x] T038 [P] [US4] Integration test for dashboard aggregation metrics and multi-currency spend conversion in `backend/tests/integration/dashboard/metrics.test.ts`
+- [x] T039 [P] [US4] Performance benchmark test asserting p95 response time $< 350\text{ms}$ with 500 obligations in `backend/tests/performance/dashboard-latency.test.ts`
 
 ### Implementation for User Story 4
-- [ ] T040 [US4] Implement `DashboardService` with optimized SQL aggregation queries in `backend/src/modules/dashboard/dashboard.service.ts`
-- [ ] T041 [US4] Implement Dashboard API route `GET /api/v1/dashboard` in `backend/src/modules/dashboard/dashboard.routes.ts`
-- [ ] T042 [P] [US4] Build Dashboard Executive KPI summary cards in `frontend/src/components/dashboard/MetricsCards.tsx`
-- [ ] T043 [P] [US4] Build "Urgent Actions Needed" priority widget in `frontend/src/components/dashboard/UrgentActionsList.tsx`
-- [ ] T044 [US4] Build Interactive Deadline Timeline & Agenda View in `frontend/src/components/dashboard/DeadlineTimeline.tsx`
+- [x] T040 [US4] Implement `DashboardService` with optimized SQL aggregation queries in `backend/src/modules/dashboard/dashboard.service.ts`
+- [x] T041 [US4] Implement Dashboard API route `GET /api/v1/dashboard` in `backend/src/modules/dashboard/dashboard.routes.ts`
+- [x] T042 [P] [US4] Build Dashboard Executive KPI summary cards in `frontend/src/components/dashboard/MetricsCards.tsx`
+- [x] T043 [P] [US4] Build "Urgent Actions Needed" priority widget in `frontend/src/components/dashboard/UrgentActionsList.tsx`
+- [x] T044 [US4] Build Interactive Deadline Timeline & Agenda View in `frontend/src/components/dashboard/DeadlineTimeline.tsx`
 
 **Checkpoint**: All P1 User Stories (US1–US4) complete; core MVP is demonstrable.
 

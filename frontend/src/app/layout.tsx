@@ -25,6 +25,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
             <nav className="flex items-center space-x-5">
               <a
+                href="/dashboard"
+                className="text-sm font-medium text-slate-700 hover:text-indigo-600 transition-colors"
+              >
+                Dashboard
+              </a>
+              <a
                 href="/obligations"
                 className="text-sm font-medium text-slate-700 hover:text-indigo-600 transition-colors"
               >
