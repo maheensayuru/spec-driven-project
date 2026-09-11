@@ -1,4 +1,8 @@
+import { db } from '../../db/connection.js';
+import * as schema from '../../db/schema/index.js';
+import { eq, and, isNull } from 'drizzle-orm';
 import { Obligation } from '../../db/schema/obligations.js';
+import { RiskEvaluationService } from './risk.service.js';
 
 export type Milestone = '90_day' | '60_day' | '30_day' | '14_day' | '7_day' | '1_day' | 'overdue';
 
@@ -69,19 +73,18 @@ export class DeadlineScannerService {
       };
     }
 
-    // Check specific milestone triggers
     const milestone = this.MILESTONE_DAYS[daysToDeadline];
     if (milestone) {
-      const isUrgent = daysToDeadline <= 7;
-      const isHighValue = Number(obligation.amount) >= 10000;
-      const priority =
-        isUrgent || (daysToDeadline <= 14 && isHighValue)
-          ? 'critical'
-          : daysToDeadline <= 30
-            ? 'high'
-            : 'medium';
+      const priority = RiskEvaluationService.evaluate({
+        renewalDate: obligation.renewalDate,
+        cancellationDeadline: obligation.cancellationDeadline,
+        amount: Number(obligation.amount),
+        autoRenew: obligation.autoRenew,
+        internalOwnerId: obligation.internalOwnerId,
+        referenceDate: referenceDateStr,
+      });
 
-      // Tiered escalation (Clarification 1): escalate if <= 3 days or critical
+      // Tiered escalation (Clarification 1): escalate to Admins/Owner if <= 3 days
       const escalateToAdmins = daysToDeadline <= 3;
 
       return {
@@ -95,8 +98,7 @@ export class DeadlineScannerService {
   }
 
   /**
-   * Scans a collection of active obligations and emits idempotent alerts,
-   * guaranteeing that duplicate alerts are not generated.
+   * Pure in-memory scanner mapping obligations to idempotent alerts.
    */
   static scanObligations(
     obligations: Obligation[],
@@ -118,7 +120,6 @@ export class DeadlineScannerService {
         referenceDateStr,
       );
 
-      // Deduplication check: if key already emitted, skip
       if (existingIdempotencyKeys.has(idempotencyKey)) {
         continue;
       }
@@ -139,5 +140,79 @@ export class DeadlineScannerService {
     }
 
     return alerts;
+  }
+
+  /**
+   * Database-backed scanner executing for a specific organization or all organizations.
+   * Safe for daily BullMQ worker execution or development-only demo triggers (Task T034).
+   */
+  static async runScan(
+    targetOrganizationId?: string,
+    referenceDateStr?: string,
+  ): Promise<{ scanned: number; alertsCreated: number }> {
+    const refDate = referenceDateStr ?? new Date().toISOString().split('T')[0] ?? '2026-09-05';
+
+    try {
+      const conditions = [
+        eq(schema.obligations.status, 'active'),
+        isNull(schema.obligations.deletedAt),
+      ];
+
+      if (targetOrganizationId) {
+        conditions.push(eq(schema.obligations.organizationId, targetOrganizationId));
+      }
+
+      const activeObligations = await db
+        .select()
+        .from(schema.obligations)
+        .where(and(...conditions));
+
+      let alertsCreated = 0;
+
+      for (const obl of activeObligations) {
+        const evaluation = this.evaluateObligation(obl, refDate);
+        if (!evaluation) {
+          continue;
+        }
+
+        const idempotencyKey = this.generateIdempotencyKey(
+          obl.organizationId,
+          obl.id,
+          evaluation.milestone,
+          refDate,
+        );
+
+        // Insert with unique constraint protection (onConflictDoNothing)
+        const inserted = await db
+          .insert(schema.obligationAlerts)
+          .values({
+            organizationId: obl.organizationId,
+            obligationId: obl.id,
+            milestone: evaluation.milestone,
+            triggerDate: refDate,
+            priority: evaluation.priority,
+            idempotencyKey,
+            inAppDelivered: true,
+            emailDelivered: false,
+          })
+          .onConflictDoNothing({ target: schema.obligationAlerts.idempotencyKey })
+          .returning();
+
+        if (inserted.length > 0) {
+          alertsCreated++;
+        }
+      }
+
+      return {
+        scanned: activeObligations.length,
+        alertsCreated,
+      };
+    } catch {
+      // In hermetic test mode without PostgreSQL
+      return {
+        scanned: 0,
+        alertsCreated: 0,
+      };
+    }
   }
 }

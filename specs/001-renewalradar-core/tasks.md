@@ -90,17 +90,17 @@ description: "Task list for RenewalRadar Core Platform implementation"
 **Independent Test**: Seed obligation with notice deadline in 14 days; trigger scanner; assert alert generated; re-run scanner; assert zero duplicates.
 
 ### Tests for User Story 3 (Write Tests FIRST, Verify Fails)
-- [ ] T029 [P] [US3] Unit test for monitoring scanner window matching (90, 60, 30, 14, 7, 1 day) in `backend/tests/unit/monitoring/scanner-matcher.test.ts`
-- [ ] T030 [P] [US3] Unit test for deterministic Risk Level calculation formula in `backend/tests/unit/monitoring/risk-engine.test.ts`
-- [ ] T031 [P] [US3] Integration test for alert generation idempotency under repeated executions in `backend/tests/integration/monitoring/alert-idempotency.test.ts`
+- [x] T029 [P] [US3] Unit test for monitoring scanner window matching (90, 60, 30, 14, 7, 1 day) in `backend/tests/unit/monitoring/scanner-matcher.test.ts`
+- [x] T030 [P] [US3] Unit test for deterministic Risk Level calculation formula in `backend/tests/unit/monitoring/risk-engine.test.ts`
+- [x] T031 [P] [US3] Integration test for alert generation idempotency under repeated executions in `backend/tests/integration/monitoring/alert-idempotency.test.ts`
 
 ### Implementation for User Story 3
-- [ ] T032 [P] [US3] Create Drizzle schema for `obligation_alerts` with unique idempotency constraint in `backend/src/db/schema/alerts.ts`
-- [ ] T033 [US3] Implement `RiskEvaluationService` (Critical, High, Medium, Low scoring) in `backend/src/modules/monitoring/risk.service.ts`
-- [ ] T034 [US3] Implement `DeadlineScannerService` querying active obligations against milestone windows in `backend/src/modules/monitoring/scanner.service.ts`
-- [ ] T035 [US3] Implement BullMQ repeatable worker job `deadline-scanner.worker.ts` running on daily cron schedule in `backend/src/queue/workers/deadline-scanner.worker.ts`
-- [ ] T036 [US3] Implement In-App and Email notification dispatcher with escalation logic in `backend/src/modules/notifications/notification.service.ts`
-- [ ] T037 [P] [US3] Build In-App Notification Bell and Alert Feed in `frontend/src/components/notifications/NotificationDrawer.tsx`
+- [x] T032 [P] [US3] Create Drizzle schema for `obligation_alerts` with unique idempotency constraint in `backend/src/db/schema/alerts.ts`
+- [x] T033 [US3] Implement `RiskEvaluationService` (Critical, High, Medium, Low scoring) in `backend/src/modules/monitoring/risk.service.ts`
+- [x] T034 [US3] Implement `DeadlineScannerService` querying active obligations against milestone windows in `backend/src/modules/monitoring/scanner.service.ts`
+- [x] T035 [US3] Implement BullMQ repeatable worker job `deadline-scanner.worker.ts` running on daily cron schedule in `backend/src/queue/workers/deadline-scanner.worker.ts`
+- [x] T036 [US3] Implement In-App and Email notification dispatcher with escalation logic in `backend/src/modules/notifications/notification.service.ts`
+- [x] T037 [P] [US3] Build In-App Notification Bell and Alert Feed in `frontend/src/components/notifications/NotificationDrawer.tsx`
 
 **Checkpoint**: Automated proactive deadline monitoring operates independently.
 

@@ -1,5 +1,6 @@
 import './globals.css';
 import React from 'react';
+import { NotificationDrawer } from '../components/notifications/NotificationDrawer';
 
 export const metadata = {
   title: 'RenewalRadar | Business Obligation & Contract Monitoring',
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 Team & Roles
               </a>
               <span className="text-xs text-slate-300">|</span>
+              <NotificationDrawer />
               <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
                 Acme Logistics (Demo)
               </span>
