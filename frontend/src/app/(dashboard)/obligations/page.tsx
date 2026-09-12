@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   ObligationResponse,
@@ -5,7 +7,7 @@ import {
   ObligationStatus,
   CreateObligationRequest,
 } from '@renewalradar/shared';
-import { ObligationForm } from '../../../components/obligations/ObligationForm.js';
+import { ObligationForm } from '../../../components/obligations/ObligationForm';
 
 export default function ObligationsPage() {
   const [obligations, setObligations] = useState<ObligationResponse[]>([]);

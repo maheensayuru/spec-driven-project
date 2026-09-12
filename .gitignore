@@ -23,6 +23,8 @@ node_modules/
 *.tsbuildinfo
 dist/
 build/
+.next/
+next-env.d.ts
 coverage/
 .npm
 *.log

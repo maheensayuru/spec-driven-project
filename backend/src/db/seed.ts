@@ -4,7 +4,7 @@ import { SessionService } from '../modules/auth/session.service.js';
 import { calculateCancellationDeadline } from '../modules/obligations/deadline.calculator.js';
 
 export async function seedDatabase(): Promise<void> {
-  console.log('Seeding RenewalRadar demo SMB data...');
+  console.log('Seeding RenewalRadar demo SMB data (Acme Distribution Logistics)...');
 
   // 1. Create Demo Organization
   const [org] = await db
@@ -19,7 +19,7 @@ export async function seedDatabase(): Promise<void> {
     .returning();
 
   if (!org) {
-    console.log('Organization already seeded. Skipping.');
+    console.log('Organization already seeded or database unavailable.');
     return;
   }
 
@@ -35,15 +35,47 @@ export async function seedDatabase(): Promise<void> {
     })
     .returning();
 
-  // 3. Create Organization Membership
+  if (!owner) {
+    console.log('Owner user creation skipped.');
+    return;
+  }
+
+  // 3. Create Organization Membership (Owner)
   await db.insert(schema.organizationMembers).values({
     organizationId: org.id,
     userId: owner.id,
     role: 'owner',
   });
 
-  // 4. Seed Realistic SMB Obligations
+  // 4. Seed Realistic Multi-Category SMB Obligations
   const sampleObligations = [
+    {
+      title: 'Fleet Commercial Auto & Liability Insurance',
+      type: 'insurance',
+      amount: '18500.00',
+      currency: 'USD',
+      billingFrequency: 'annual',
+      renewalDate: '2026-10-31',
+      noticePeriodDays: 45,
+      autoRenew: true,
+      riskLevel: 'critical', // Cancellation deadline is 5 days away
+      tags: ['insurance', 'compliance', 'vehicles'],
+      notes:
+        'State-mandated commercial auto insurance. Cancellation notice required 45 days prior.',
+    },
+    {
+      title: 'Datadog APM & Cloud Infrastructure Monitoring',
+      type: 'subscription',
+      amount: '12000.00',
+      currency: 'USD',
+      billingFrequency: 'annual',
+      renewalDate: '2026-10-09',
+      noticePeriodDays: 14,
+      autoRenew: true,
+      riskLevel: 'high', // Cancellation deadline exactly 14 days away
+      tags: ['saas', 'infra', 'monitoring'],
+      notes: 'Monitors real-time warehouse logistics API servers.',
+    },
     {
       title: 'Google Workspace Enterprise',
       type: 'subscription',
@@ -54,8 +86,8 @@ export async function seedDatabase(): Promise<void> {
       noticePeriodDays: 30,
       autoRenew: true,
       riskLevel: 'medium',
-      tags: ['saas', 'productivity'],
-      notes: 'Company-wide email, cloud storage, and video conferencing.',
+      tags: ['saas', 'productivity', 'email'],
+      notes: 'Company-wide email, cloud storage, and team communication.',
     },
     {
       title: 'Warehouse Commercial Lease (Building 4B)',
@@ -68,20 +100,33 @@ export async function seedDatabase(): Promise<void> {
       autoRenew: true,
       riskLevel: 'high',
       tags: ['facility', 'lease'],
-      notes: 'Requires certified mail non-renewal notice 90 days prior to lease end.',
+      notes: 'Certified mail non-renewal notice must be postmarked 90 days before expiration.',
     },
     {
-      title: 'Fleet Commercial Auto & Liability Insurance',
-      type: 'insurance',
-      amount: '18500.00',
+      title: 'Municipal Hazardous Materials Transport Permit',
+      type: 'permit',
+      amount: '1500.00',
       currency: 'USD',
       billingFrequency: 'annual',
-      renewalDate: '2026-10-31',
-      noticePeriodDays: 45,
+      renewalDate: '2026-12-31',
+      noticePeriodDays: 30,
+      autoRenew: false,
+      riskLevel: 'low',
+      tags: ['compliance', 'regulatory'],
+      notes: 'Annual city transport renewal certificate.',
+    },
+    {
+      title: 'Forklift Fleet Maintenance Agreement',
+      type: 'vendor_agreement',
+      amount: '9600.00',
+      currency: 'USD',
+      billingFrequency: 'quarterly',
+      renewalDate: '2027-08-15',
+      noticePeriodDays: 60,
       autoRenew: true,
-      riskLevel: 'critical',
-      tags: ['insurance', 'compliance'],
-      notes: 'Mandatory state regulatory insurance policy for commercial vehicles.',
+      riskLevel: 'low',
+      tags: ['equipment', 'warehouse'],
+      notes: 'Quarterly preventative service on 8 Crown forklifts.',
     },
   ];
 
@@ -110,7 +155,9 @@ export async function seedDatabase(): Promise<void> {
     });
   }
 
-  console.log('Seeding complete: Acme Distribution Logistics provisioned with sample obligations.');
+  console.log(
+    'Seeding complete: Acme Distribution Logistics provisioned with 6 diverse obligations.',
+  );
 }
 
 // Auto-run when executed directly via tsx

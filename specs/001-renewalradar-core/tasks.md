@@ -69,15 +69,15 @@ description: "Task list for RenewalRadar Core Platform implementation"
 **Independent Test**: Admin invites Viewer; Viewer reads obligations but is blocked (403) from mutations; cross-tenant query returns 404.
 
 ### Tests for User Story 2 (Write Tests FIRST, Verify Fails)
-- [ ] T022 [P] [US2] Unit test for RBAC permission matrix across Owner, Admin, Member, and Viewer in `backend/tests/unit/auth/rbac.test.ts`
-- [ ] T023 [P] [US2] Security integration test asserting complete cross-tenant isolation and 404 response on foreign tenant IDs in `backend/tests/integration/auth/tenant-isolation.test.ts`
-- [ ] T024 [P] [US2] Contract test for invitation dispatch and acceptance in `backend/tests/contract/invitations.test.ts`
+- [x] T022 [P] [US2] Unit test for RBAC permission matrix across Owner, Admin, Member, and Viewer in `backend/tests/unit/auth/rbac.test.ts`
+- [x] T023 [P] [US2] Security integration test asserting complete cross-tenant isolation and 404 response on foreign tenant IDs in `backend/tests/integration/auth/tenant-isolation.test.ts`
+- [x] T024 [P] [US2] Contract test for invitation dispatch and acceptance in `backend/tests/contract/invitations.test.ts`
 
 ### Implementation for User Story 2
-- [ ] T025 [US2] Implement RBAC authorization middleware in `backend/src/modules/auth/rbac.middleware.ts`
-- [ ] T026 [US2] Implement Organization and Member services (invitations, role updates, member removal) in `backend/src/modules/organizations/organization.service.ts`
-- [ ] T027 [US2] Implement Organization API routes in `backend/src/modules/organizations/organization.routes.ts`
-- [ ] T028 [P] [US2] Build Team Management & Invite Modal in `frontend/src/components/organizations/TeamSettings.tsx`
+- [x] T025 [US2] Implement RBAC authorization middleware in `backend/src/modules/auth/rbac.middleware.ts`
+- [x] T026 [US2] Implement Organization and Member services (invitations, role updates, member removal) in `backend/src/modules/organizations/organization.service.ts`
+- [x] T027 [US2] Implement Organization API routes in `backend/src/modules/organizations/organization.routes.ts`
+- [x] T028 [P] [US2] Build Team Management & Invite Modal in `frontend/src/components/organizations/TeamSettings.tsx`
 
 **Checkpoint**: User Stories 1 and 2 fully functional with verified tenant isolation.
 
@@ -90,17 +90,17 @@ description: "Task list for RenewalRadar Core Platform implementation"
 **Independent Test**: Seed obligation with notice deadline in 14 days; trigger scanner; assert alert generated; re-run scanner; assert zero duplicates.
 
 ### Tests for User Story 3 (Write Tests FIRST, Verify Fails)
-- [ ] T029 [P] [US3] Unit test for monitoring scanner window matching (90, 60, 30, 14, 7, 1 day) in `backend/tests/unit/monitoring/scanner-matcher.test.ts`
-- [ ] T030 [P] [US3] Unit test for deterministic Risk Level calculation formula in `backend/tests/unit/monitoring/risk-engine.test.ts`
-- [ ] T031 [P] [US3] Integration test for alert generation idempotency under repeated executions in `backend/tests/integration/monitoring/alert-idempotency.test.ts`
+- [x] T029 [P] [US3] Unit test for monitoring scanner window matching (90, 60, 30, 14, 7, 1 day) in `backend/tests/unit/monitoring/scanner-matcher.test.ts`
+- [x] T030 [P] [US3] Unit test for deterministic Risk Level calculation formula in `backend/tests/unit/monitoring/risk-engine.test.ts`
+- [x] T031 [P] [US3] Integration test for alert generation idempotency under repeated executions in `backend/tests/integration/monitoring/alert-idempotency.test.ts`
 
 ### Implementation for User Story 3
-- [ ] T032 [P] [US3] Create Drizzle schema for `obligation_alerts` with unique idempotency constraint in `backend/src/db/schema/alerts.ts`
-- [ ] T033 [US3] Implement `RiskEvaluationService` (Critical, High, Medium, Low scoring) in `backend/src/modules/monitoring/risk.service.ts`
-- [ ] T034 [US3] Implement `DeadlineScannerService` querying active obligations against milestone windows in `backend/src/modules/monitoring/scanner.service.ts`
-- [ ] T035 [US3] Implement BullMQ repeatable worker job `deadline-scanner.worker.ts` running on daily cron schedule in `backend/src/queue/workers/deadline-scanner.worker.ts`
-- [ ] T036 [US3] Implement In-App and Email notification dispatcher with escalation logic in `backend/src/modules/notifications/notification.service.ts`
-- [ ] T037 [P] [US3] Build In-App Notification Bell and Alert Feed in `frontend/src/components/notifications/NotificationDrawer.tsx`
+- [x] T032 [P] [US3] Create Drizzle schema for `obligation_alerts` with unique idempotency constraint in `backend/src/db/schema/alerts.ts`
+- [x] T033 [US3] Implement `RiskEvaluationService` (Critical, High, Medium, Low scoring) in `backend/src/modules/monitoring/risk.service.ts`
+- [x] T034 [US3] Implement `DeadlineScannerService` querying active obligations against milestone windows in `backend/src/modules/monitoring/scanner.service.ts`
+- [x] T035 [US3] Implement BullMQ repeatable worker job `deadline-scanner.worker.ts` running on daily cron schedule in `backend/src/queue/workers/deadline-scanner.worker.ts`
+- [x] T036 [US3] Implement In-App and Email notification dispatcher with escalation logic in `backend/src/modules/notifications/notification.service.ts`
+- [x] T037 [P] [US3] Build In-App Notification Bell and Alert Feed in `frontend/src/components/notifications/NotificationDrawer.tsx`
 
 **Checkpoint**: Automated proactive deadline monitoring operates independently.
 
@@ -113,15 +113,15 @@ description: "Task list for RenewalRadar Core Platform implementation"
 **Independent Test**: Load dashboard endpoint; verify response returns aggregated committed spend, imminent deadlines, and urgent action list in $< 350\text{ms}$.
 
 ### Tests for User Story 4 (Write Tests FIRST, Verify Fails)
-- [ ] T038 [P] [US4] Integration test for dashboard aggregation metrics and multi-currency spend conversion in `backend/tests/integration/dashboard/metrics.test.ts`
-- [ ] T039 [P] [US4] Performance benchmark test asserting p95 response time $< 350\text{ms}$ with 500 obligations in `backend/tests/performance/dashboard-latency.test.ts`
+- [x] T038 [P] [US4] Integration test for dashboard aggregation metrics and multi-currency spend conversion in `backend/tests/integration/dashboard/metrics.test.ts`
+- [x] T039 [P] [US4] Performance benchmark test asserting p95 response time $< 350\text{ms}$ with 500 obligations in `backend/tests/performance/dashboard-latency.test.ts`
 
 ### Implementation for User Story 4
-- [ ] T040 [US4] Implement `DashboardService` with optimized SQL aggregation queries in `backend/src/modules/dashboard/dashboard.service.ts`
-- [ ] T041 [US4] Implement Dashboard API route `GET /api/v1/dashboard` in `backend/src/modules/dashboard/dashboard.routes.ts`
-- [ ] T042 [P] [US4] Build Dashboard Executive KPI summary cards in `frontend/src/components/dashboard/MetricsCards.tsx`
-- [ ] T043 [P] [US4] Build "Urgent Actions Needed" priority widget in `frontend/src/components/dashboard/UrgentActionsList.tsx`
-- [ ] T044 [US4] Build Interactive Deadline Timeline & Agenda View in `frontend/src/components/dashboard/DeadlineTimeline.tsx`
+- [x] T040 [US4] Implement `DashboardService` with optimized SQL aggregation queries in `backend/src/modules/dashboard/dashboard.service.ts`
+- [x] T041 [US4] Implement Dashboard API route `GET /api/v1/dashboard` in `backend/src/modules/dashboard/dashboard.routes.ts`
+- [x] T042 [P] [US4] Build Dashboard Executive KPI summary cards in `frontend/src/components/dashboard/MetricsCards.tsx`
+- [x] T043 [P] [US4] Build "Urgent Actions Needed" priority widget in `frontend/src/components/dashboard/UrgentActionsList.tsx`
+- [x] T044 [US4] Build Interactive Deadline Timeline & Agenda View in `frontend/src/components/dashboard/DeadlineTimeline.tsx`
 
 **Checkpoint**: All P1 User Stories (US1–US4) complete; core MVP is demonstrable.
 
