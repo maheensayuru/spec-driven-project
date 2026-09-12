@@ -16,15 +16,16 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
 }) => {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div
+        className="surface grid grid-cols-2 divide-x divide-y divide-slate-200 overflow-hidden lg:grid-cols-4 lg:divide-y-0"
+        aria-label="Loading dashboard metrics"
+        aria-busy="true"
+      >
         {[1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm animate-pulse space-y-3"
-          >
-            <div className="h-3 bg-slate-200 rounded w-1/2" />
-            <div className="h-7 bg-slate-200 rounded w-3/4" />
-            <div className="h-2 bg-slate-100 rounded w-1/3" />
+          <div key={i} className="min-h-28 animate-pulse p-4 sm:p-5">
+            <div className="h-3 w-24 rounded bg-slate-200" />
+            <div className="mt-4 h-7 w-20 rounded bg-slate-200" />
+            <div className="mt-3 h-2.5 w-full max-w-32 rounded bg-slate-100" />
           </div>
         ))}
       </div>
@@ -33,8 +34,8 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
 
   if (error) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl">
-        Failed to load executive metrics: {error}
+      <div className="feedback-error" role="alert">
+        Dashboard metrics could not be loaded: {error}
       </div>
     );
   }
@@ -47,65 +48,52 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
 
   const cards = [
     {
-      title: 'Active Obligations',
+      title: 'Active obligations',
       value: activeCount.toLocaleString(),
-      subtitle: `${activeCount} monitored contracts`,
-      tone: 'neutral',
+      subtitle: 'Contracts monitored',
+      valueClass: 'text-slate-950',
     },
     {
-      title: 'Upcoming Renewals',
+      title: 'Upcoming renewals',
       value: imminentRenewals.toLocaleString(),
-      subtitle: 'Due within next 30 days',
-      tone: imminentRenewals > 0 ? 'amber' : 'neutral',
+      subtitle: 'Within the next 30 days',
+      valueClass: imminentRenewals > 0 ? 'text-amber-700' : 'text-slate-950',
     },
     {
-      title: 'Urgent Action Items',
+      title: 'Urgent actions',
       value: urgentCount.toLocaleString(),
-      subtitle: urgentCount > 0 ? 'Requires executive review' : 'All obligations clear',
-      tone: urgentCount > 0 ? 'red' : 'green',
+      subtitle: urgentCount > 0 ? 'Need review now' : 'No action required',
+      valueClass: urgentCount > 0 ? 'text-red-700' : 'text-emerald-700',
     },
     {
-      title: 'Annual Committed Spend',
-      value: `${currency === 'USD' ? '$' : currency + ' '}${committedSpend.toLocaleString(
+      title: 'Annual committed spend',
+      value: `${currency === 'USD' ? '$' : `${currency} `}${committedSpend.toLocaleString(
         undefined,
         {
           minimumFractionDigits: 0,
           maximumFractionDigits: 0,
         },
       )}`,
-      subtitle: 'Across all active vendors',
-      tone: 'indigo',
+      subtitle: `Active vendors · ${currency}`,
+      valueClass: 'text-[#173e48]',
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {cards.map((card, idx) => (
-        <div
-          key={idx}
-          className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-1 hover:border-slate-300 transition-colors"
-        >
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+    <dl className="surface grid grid-cols-2 divide-x divide-y divide-slate-200 overflow-hidden lg:grid-cols-4 lg:divide-y-0">
+      {cards.map((card) => (
+        <div key={card.title} className="min-w-0 p-4 sm:p-5">
+          <dt className="min-h-8 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600 lg:min-h-0">
             {card.title}
-          </div>
-          <div
-            className={`text-2xl font-extrabold tracking-tight ${
-              card.tone === 'red'
-                ? 'text-red-600'
-                : card.tone === 'amber'
-                  ? 'text-amber-600'
-                  : card.tone === 'indigo'
-                    ? 'text-indigo-600'
-                    : card.tone === 'green'
-                      ? 'text-emerald-600'
-                      : 'text-slate-900'
-            }`}
+          </dt>
+          <dd
+            className={`mt-2 truncate text-2xl font-bold tabular-nums tracking-tight sm:text-3xl ${card.valueClass}`}
           >
             {card.value}
-          </div>
-          <div className="text-xs text-slate-500">{card.subtitle}</div>
+          </dd>
+          <dd className="mt-1 text-xs leading-5 text-slate-500">{card.subtitle}</dd>
         </div>
       ))}
-    </div>
+    </dl>
   );
 };

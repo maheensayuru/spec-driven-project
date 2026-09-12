@@ -1,13 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  ObligationResponse,
-  ObligationType,
-  ObligationStatus,
-  CreateObligationRequest,
-} from '@renewalradar/shared';
+import { ObligationResponse, CreateObligationRequest } from '@renewalradar/shared';
 import { ObligationForm } from '../../../components/obligations/ObligationForm';
+import { Badge } from '../../../components/ui/Badge';
+import { Dialog } from '../../../components/ui/Dialog';
+import { Search, Plus, Files, ArrowUpRight } from 'lucide-react';
 
 export default function ObligationsPage() {
   const [obligations, setObligations] = useState<ObligationResponse[]>([]);
@@ -96,6 +94,14 @@ export default function ObligationsPage() {
           },
         ];
         setObligations(sampleData);
+        const inspectedId = new URLSearchParams(window.location.search).get('inspect');
+        const inspected = sampleData.find((item) => item.id === inspectedId);
+        if (inspected) {
+          setEditingObligation(inspected);
+          setIsFormOpen(true);
+        } else if (new URLSearchParams(window.location.search).get('new') === 'true') {
+          setIsFormOpen(true);
+        }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load obligations');
       } finally {
@@ -177,195 +183,318 @@ export default function ObligationsPage() {
     }
   };
 
+  const hasFilters = !!searchQuery || selectedType !== 'all' || selectedStatus !== 'all';
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedType('all');
+    setSelectedStatus('all');
+  };
+  const openCreate = () => {
+    setEditingObligation(undefined);
+    setIsFormOpen(true);
+  };
+  const openEdit = (item: ObligationResponse) => {
+    setEditingObligation(item);
+    setIsFormOpen(true);
+  };
+  const closeForm = () => {
+    setIsFormOpen(false);
+    setEditingObligation(undefined);
+  };
+  const money = (item: ObligationResponse) =>
+    new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: item.currency,
+      maximumFractionDigits: 2,
+    }).format(item.amount);
+  const date = (value?: string | null) =>
+    value
+      ? new Intl.DateTimeFormat('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          timeZone: 'UTC',
+        }).format(new Date(value))
+      : 'Not set';
+
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-              Business Obligations
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Continuously monitor recurring vendor contracts, subscriptions, and renewal deadlines.
-            </p>
-          </div>
-
-          <button
-            onClick={() => {
-              setEditingObligation(undefined);
-              setIsFormOpen(true);
-            }}
-            className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
-          >
-            + Add Obligation
-          </button>
+    <div>
+      <div className="page-header">
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-[.14em] text-slate-500">
+            Obligation register
+          </p>
+          <h1 className="page-title">Obligations</h1>
+          <p className="page-description">
+            Every commitment. Every deadline. One place to stay in control.
+          </p>
         </div>
+        <button onClick={openCreate} className="btn btn-primary shrink-0">
+          <Plus size={16} aria-hidden="true" />
+          Add Obligation
+        </button>
+      </div>
 
-        {/* Modal / Inline Form */}
-        {isFormOpen && (
-          <div className="mb-6">
-            <ObligationForm
-              initialData={editingObligation}
-              onSubmit={handleCreateOrUpdate}
-              onCancel={() => {
-                setIsFormOpen(false);
-                setEditingObligation(undefined);
-              }}
-            />
-          </div>
-        )}
+      <Dialog
+        open={isFormOpen}
+        onClose={closeForm}
+        title={editingObligation ? 'Edit Obligation' : 'Add Obligation'}
+        description="Record the agreement and the dates you need to act on."
+      >
+        <ObligationForm
+          key={editingObligation?.id ?? 'new'}
+          initialData={editingObligation}
+          onSubmit={handleCreateOrUpdate}
+          onCancel={closeForm}
+        />
+      </Dialog>
 
-        {/* Filters & Search Control Bar */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-center">
-          <div className="w-full md:w-80">
+      <div className="surface overflow-hidden">
+        <div className="flex flex-col xl:flex-row xl:items-center gap-3 border-b border-slate-200 p-4">
+          <div className="relative flex-1">
+            <Search size={17} aria-hidden="true" className="absolute left-3 top-3 text-slate-400" />
             <input
-              type="text"
+              type="search"
+              aria-label="Search obligations"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search obligations, vendors, tags..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600"
+              placeholder="Search title, vendor or tag…"
+              className="field !pl-10"
             />
           </div>
-
-          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
             <select
+              aria-label="Filter by type"
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-slate-700"
+              className="field sm:!w-auto"
             >
-              <option value="all">All Types</option>
-              <option value="subscription">Subscription</option>
-              <option value="contract">Contract</option>
-              <option value="lease">Lease</option>
-              <option value="insurance">Insurance</option>
-              <option value="license">License</option>
+              <option value="all">All types</option>
+              {[
+                'subscription',
+                'contract',
+                'license',
+                'permit',
+                'insurance',
+                'warranty',
+                'vendor_agreement',
+                'lease',
+                'other',
+              ].map((type) => (
+                <option key={type} value={type}>
+                  {type.replace('_', ' ').replace(/^\w/, (s) => s.toUpperCase())}
+                </option>
+              ))}
             </select>
-
             <select
+              aria-label="Filter by status"
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-slate-700"
+              className="field sm:!w-auto"
             >
-              <option value="all">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="under_review">Under Review</option>
-              <option value="renewed">Renewed</option>
-              <option value="archived">Archived</option>
+              <option value="all">All statuses</option>
+              {['active', 'under_review', 'renewed', 'archived'].map((status) => (
+                <option key={status} value={status}>
+                  {status.replace('_', ' ').replace(/^\w/, (s) => s.toUpperCase())}
+                </option>
+              ))}
             </select>
+            {hasFilters && (
+              <button onClick={clearFilters} className="btn btn-ghost col-span-2">
+                Reset filters
+              </button>
+            )}
           </div>
         </div>
-
-        {/* States & Content */}
+        <div className="flex justify-between items-center gap-2 px-4 py-3 border-b border-slate-100 text-xs text-slate-500">
+          <span role="status">
+            {isLoading
+              ? 'Loading register…'
+              : `${filteredObligations.length} of ${obligations.length} obligations`}
+          </span>
+          <span className="hidden sm:inline">Amounts shown per billing period</span>
+        </div>
         {isLoading ? (
-          <div className="p-12 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3" />
-            Loading obligations...
+          <div className="empty-state" role="status">
+            <div className="mx-auto mb-4 h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[#173e48]" />
+            Loading obligations…
           </div>
         ) : error ? (
-          <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-red-700 text-center">
-            {error}
+          <div className="m-5 feedback-error" role="alert">
+            <p>{error}</p>
+            <button className="btn btn-secondary mt-3" onClick={() => window.location.reload()}>
+              Try again
+            </button>
           </div>
         ) : filteredObligations.length === 0 ? (
-          <div className="p-12 text-center bg-white rounded-xl border border-slate-200 space-y-3">
-            <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
-              📄
-            </div>
-            <h3 className="text-lg font-bold text-slate-900">No obligations found</h3>
-            <p className="text-sm text-slate-500 max-w-sm mx-auto">
-              {searchQuery || selectedType !== 'all' || selectedStatus !== 'all'
-                ? 'Try adjusting your search or filters.'
-                : 'Get started by tracking your first vendor contract or software subscription.'}
+          <div className="empty-state">
+            <Files size={28} className="mx-auto mb-4 text-slate-400" aria-hidden="true" />
+            <h2 className="section-heading">
+              {hasFilters ? 'No matching obligations' : 'No obligations yet'}
+            </h2>
+            <p className="mx-auto mt-2 max-w-sm text-sm leading-6">
+              {hasFilters
+                ? 'Try a different search or clear your filters to see the full register.'
+                : 'Start with a contract, subscription, or policy. Keep its next deadline in view.'}
             </p>
+            <button
+              onClick={hasFilters ? clearFilters : openCreate}
+              className="btn btn-secondary mt-5"
+            >
+              {hasFilters ? 'Reset filters' : 'Add Obligation'}
+            </button>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+          <>
+            <div className="hidden xl:block overflow-x-auto">
+              <table className="data-table text-[13px]">
+                <caption className="sr-only">
+                  Obligation register with cancellation deadlines, renewals, financial amounts and
+                  actions
+                </caption>
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                    <th className="py-3 px-4">Title & Vendor</th>
-                    <th className="py-3 px-4">Type</th>
-                    <th className="py-3 px-4">Annual / Frequency</th>
-                    <th className="py-3 px-4">Notice Deadline</th>
-                    <th className="py-3 px-4">Renewal Date</th>
-                    <th className="py-3 px-4">Risk Level</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+                  <tr>
+                    <th scope="col">Obligation / Vendor</th>
+                    <th scope="col">Notice deadline</th>
+                    <th scope="col">Renewal</th>
+                    <th scope="col" className="!text-right">
+                      Amount
+                    </th>
+                    <th scope="col">Risk / Status</th>
+                    <th scope="col" className="!text-right">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-sm">
+                <tbody>
                   {filteredObligations.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/75 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">{item.title}</div>
+                    <tr key={item.id}>
+                      <td className="max-w-[270px]">
+                        <button
+                          onClick={() => openEdit(item)}
+                          className="text-left font-medium text-slate-900 hover:underline underline-offset-4"
+                        >
+                          {item.title}
+                        </button>
                         {item.vendorName && (
-                          <div className="text-xs text-slate-500">{item.vendorName}</div>
+                          <p className="mt-1 text-xs text-slate-500">{item.vendorName}</p>
                         )}
+                        <p className="mt-1 text-xs text-slate-500 capitalize">
+                          {item.type.replace('_', ' ')}
+                        </p>
                       </td>
-                      <td className="py-3 px-4 capitalize text-slate-600">{item.type}</td>
-                      <td className="py-3 px-4">
-                        <span className="font-semibold text-slate-900">
-                          ${item.amount.toLocaleString()}
-                        </span>
-                        <span className="text-xs text-slate-500 block capitalize">
-                          {item.billingFrequency}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="font-mono text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded">
-                          {item.cancellationDeadline}
-                        </span>
-                        <span className="text-xs text-slate-400 block mt-0.5">
-                          {item.noticePeriodDays}d notice
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 font-mono text-xs text-slate-700">
-                        {item.renewalDate}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold capitalize ${
-                            item.riskLevel === 'critical'
-                              ? 'bg-red-100 text-red-700'
-                              : item.riskLevel === 'high'
-                                ? 'bg-orange-100 text-orange-700'
-                                : item.riskLevel === 'medium'
-                                  ? 'bg-amber-100 text-amber-700'
-                                  : 'bg-emerald-100 text-emerald-700'
-                          }`}
+                      <td className="whitespace-nowrap">
+                        <p
+                          className={`tabular-nums ${item.riskLevel === 'critical' ? 'text-red-800 font-medium' : 'text-slate-700'}`}
                         >
-                          {item.riskLevel}
-                        </span>
+                          {date(item.cancellationDeadline)}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {item.noticePeriodDays} days’ notice
+                        </p>
                       </td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 capitalize">
-                          {item.status}
-                        </span>
+                      <td className="tabular-nums whitespace-nowrap text-slate-600">
+                        {date(item.renewalDate)}
                       </td>
-                      <td className="py-3 px-4 text-right space-x-2">
-                        <button
-                          onClick={() => {
-                            setEditingObligation(item);
-                            setIsFormOpen(true);
-                          }}
-                          className="text-xs text-indigo-600 hover:text-indigo-900 font-medium"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="text-xs text-red-600 hover:text-red-900 font-medium"
-                        >
-                          Delete
-                        </button>
+                      <td className="text-right whitespace-nowrap">
+                        <p className="font-medium tabular-nums">{money(item)}</p>
+                        <p className="mt-1 text-xs text-slate-500 capitalize">
+                          {item.billingFrequency.replace('_', ' ')}
+                        </p>
+                      </td>
+                      <td>
+                        <div className="flex flex-col items-start gap-1.5">
+                          <Badge tone={item.riskLevel}>{item.riskLevel}</Badge>
+                          <span className="text-xs text-slate-500 capitalize">
+                            {item.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="flex flex-col items-end">
+                          <button
+                            onClick={() => openEdit(item)}
+                            className="btn btn-ghost !min-h-9 !px-2"
+                            aria-label={`Edit ${item.title}`}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            className="btn btn-ghost !min-h-9 !px-2 !text-red-700"
+                            aria-label={`Delete ${item.title}`}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
+            <div className="xl:hidden divide-y divide-slate-200">
+              {filteredObligations.map((item) => (
+                <article key={item.id} className="p-4 sm:p-5">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="min-w-0">
+                      <button
+                        onClick={() => openEdit(item)}
+                        className="text-left text-sm font-medium leading-6 text-slate-900 hover:underline"
+                      >
+                        {item.title}
+                      </button>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {item.vendorName || item.type.replace('_', ' ')}
+                      </p>
+                    </div>
+                    <Badge tone={item.riskLevel}>{item.riskLevel}</Badge>
+                  </div>
+                  <dl className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-4 text-sm">
+                    <div>
+                      <dt className="text-slate-500">Notice deadline</dt>
+                      <dd
+                        className={`mt-1.5 tabular-nums font-medium ${item.riskLevel === 'critical' ? 'text-red-800' : ''}`}
+                      >
+                        {date(item.cancellationDeadline)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-500">Renewal date</dt>
+                      <dd className="mt-1.5 tabular-nums">{date(item.renewalDate)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-500 capitalize">
+                        {item.billingFrequency.replace('_', ' ')} amount
+                      </dt>
+                      <dd className="mt-1.5 font-medium tabular-nums">{money(item)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-500">Status</dt>
+                      <dd className="mt-1.5 capitalize">{item.status.replace('_', ' ')}</dd>
+                    </div>
+                  </dl>
+                  <div className="mt-4 flex justify-between items-center">
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      className="btn btn-ghost !text-red-700 !px-0"
+                      aria-label={`Delete ${item.title}`}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => openEdit(item)}
+                      className="btn btn-secondary"
+                      aria-label={`Edit ${item.title}`}
+                    >
+                      View & edit
+                      <ArrowUpRight size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

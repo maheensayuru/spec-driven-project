@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useId, useState } from 'react';
+import { Bell, Check, ExternalLink, FlaskConical } from 'lucide-react';
 import { RiskLevel } from '@renewalradar/shared';
+import { Badge } from '../ui/Badge';
+import { Dialog } from '../ui/Dialog';
 
 export interface AlertItem {
   id: string;
@@ -18,6 +21,30 @@ export interface NotificationDrawerProps {
   initialAlerts?: AlertItem[];
   onTriggerScan?: () => Promise<void>;
 }
+
+const severityOrder: Record<RiskLevel, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+const dateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
+const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'UTC',
+  timeZoneName: 'short',
+});
 
 export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   initialAlerts,
@@ -49,161 +76,210 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
     ],
   );
   const [isScanning, setIsScanning] = useState(false);
-  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [scanFeedback, setScanFeedback] = useState<{
+    tone: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const unreadStatusId = useId();
 
-  const unreadCount = alerts.filter((a) => !a.acknowledgedAt).length;
+  const unreadCount = alerts.filter((alert) => !alert.acknowledgedAt).length;
+  const sortedAlerts = [...alerts].sort((left, right) => {
+    const severityDifference = severityOrder[left.priority] - severityOrder[right.priority];
+    if (severityDifference !== 0) return severityDifference;
+    return Number(Boolean(left.acknowledgedAt)) - Number(Boolean(right.acknowledgedAt));
+  });
 
   const handleAcknowledge = (alertId: string) => {
-    setAlerts((prev) =>
-      prev.map((a) => (a.id === alertId ? { ...a, acknowledgedAt: new Date().toISOString() } : a)),
+    setAlerts((previous) =>
+      previous.map((alert) =>
+        alert.id === alertId ? { ...alert, acknowledgedAt: new Date().toISOString() } : alert,
+      ),
     );
   };
 
   const handleManualScan = async () => {
     setIsScanning(true);
-    setScanMessage(null);
+    setScanFeedback(null);
     try {
       if (onTriggerScan) {
         await onTriggerScan();
       }
-      // Simulate scan result
-      setScanMessage('Scanner completed: 3 obligations scanned, 0 duplicate alerts.');
+      setScanFeedback({
+        tone: 'success',
+        message: 'Demo scan completed. This preview does not persist scanner results.',
+      });
     } catch {
-      setScanMessage('Scanner execution failed.');
+      setScanFeedback({
+        tone: 'error',
+        message: 'The demo scanner could not complete. Please try again.',
+      });
     } finally {
       setIsScanning(false);
     }
   };
 
-  const getPriorityBadgeClass = (priority: RiskLevel) => {
-    switch (priority) {
-      case 'critical':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'high':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'medium':
-        return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'low':
-        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
-    }
-  };
-
   return (
-    <div className="relative">
-      {/* Notification Bell Trigger Button */}
+    <>
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-100"
+        type="button"
+        onClick={() => setIsOpen(true)}
+        className="relative inline-flex h-11 w-11 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#173e48] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#173e48] focus-visible:ring-offset-2"
         aria-label="Notifications"
+        aria-describedby={unreadStatusId}
       >
-        <span className="text-lg">🔔</span>
+        <Bell aria-hidden="true" className="h-5 w-5" />
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">
-            {unreadCount}
+          <span
+            aria-hidden="true"
+            className="absolute -right-0.5 -top-0.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-700 px-1 text-[10px] font-bold leading-4 text-white"
+          >
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
+      <span id={unreadStatusId} className="sr-only" role="status" aria-live="polite">
+        {unreadCount === 0 ? 'No unread notifications' : `${unreadCount} unread notifications`}
+      </span>
 
-      {/* Drawer Overlay & Content */}
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-96 max-w-[90vw] bg-white rounded-2xl shadow-xl border border-slate-200 z-50 overflow-hidden animate-in fade-in-50 duration-150">
-          {/* Header */}
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Deadline Alerts</h3>
-              <p className="text-xs text-slate-500">Autonomous monitoring feed</p>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={handleManualScan}
-                disabled={isScanning}
-                className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-md transition-colors disabled:opacity-50"
-                title="Trigger immediate deadline scanner run"
-              >
-                {isScanning ? 'Scanning...' : '⚡ Scan Now'}
-              </button>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-xs font-bold p-1"
-              >
-                ✕
-              </button>
-            </div>
+      <Dialog
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        title="Notifications"
+        description={
+          unreadCount === 0
+            ? 'No unread deadline alerts'
+            : `${unreadCount} unread deadline ${unreadCount === 1 ? 'alert' : 'alerts'}`
+        }
+        variant="drawer"
+      >
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="border-b border-slate-200 px-4 py-2 sm:px-5" aria-label="Severity order">
+            <p className="text-xs text-slate-500">
+              Ordered by severity: Critical, High, Medium, Low
+            </p>
           </div>
 
-          {/* Scan feedback alert */}
-          {scanMessage && (
-            <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100 text-[11px] text-indigo-900 font-medium">
-              {scanMessage}
-            </div>
-          )}
-
-          {/* Alert List */}
-          <div className="max-h-96 overflow-y-auto divide-y divide-slate-100">
-            {alerts.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 space-y-2">
-                <div className="text-2xl">✨</div>
-                <p className="text-xs font-medium">No active deadline alerts.</p>
-                <p className="text-[11px] text-slate-400">
-                  All contracts and obligations are outside critical notice windows.
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {sortedAlerts.length === 0 ? (
+              <div className="empty-state mx-4 my-6 sm:mx-5">
+                <Bell aria-hidden="true" className="mx-auto h-6 w-6 text-slate-400" />
+                <p className="mt-3 font-semibold text-slate-900">No deadline alerts</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  New milestone alerts will appear here when they are available.
                 </p>
               </div>
             ) : (
-              alerts.map((item) => (
-                <div
-                  key={item.id}
-                  className={`p-4 transition-colors ${
-                    item.acknowledgedAt ? 'bg-white opacity-60' : 'bg-slate-50/50'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span
-                      className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-full border ${getPriorityBadgeClass(
-                        item.priority,
-                      )}`}
+              <ol className="divide-y divide-slate-200">
+                {sortedAlerts.map((item) => {
+                  const isUnread = !item.acknowledgedAt;
+                  return (
+                    <li
+                      key={item.id}
+                      className={`relative px-4 py-4 sm:px-5 ${isUnread ? 'bg-slate-50' : 'bg-white'}`}
                     >
-                      {item.priority}
-                    </span>
-                    <span className="text-[11px] text-slate-400 font-mono">
-                      Milestone: {item.milestone.replace('_', ' ')}
-                    </span>
-                  </div>
+                      {isUnread && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute bottom-4 left-0 top-4 w-0.5 bg-[#173e48]"
+                        />
+                      )}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Badge tone={item.priority}>{item.priority}</Badge>
+                        <span
+                          className={`text-xs font-semibold ${
+                            isUnread ? 'text-[#173e48]' : 'text-slate-500'
+                          }`}
+                        >
+                          {isUnread ? 'Unread' : 'Read'}
+                        </span>
+                      </div>
 
-                  <h4 className="text-xs font-bold text-slate-900 mt-1.5">
-                    {item.obligationTitle}
-                  </h4>
-
-                  <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
-                    <span>Due: {item.triggerDate}</span>
-                    {!item.acknowledgedAt ? (
-                      <button
-                        onClick={() => handleAcknowledge(item.id)}
-                        className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                      <a
+                        href={`/obligations?inspect=${encodeURIComponent(item.obligationId)}`}
+                        className="mt-3 inline-flex items-start gap-1.5 text-sm font-semibold text-slate-900 hover:text-[#173e48] hover:underline"
+                        onClick={() => setIsOpen(false)}
                       >
-                        Acknowledge
-                      </button>
-                    ) : (
-                      <span className="text-[10px] text-emerald-600 font-medium">
-                        ✓ Acknowledged
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))
+                        <span>{item.obligationTitle}</span>
+                        <ExternalLink aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      </a>
+
+                      <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px]">
+                        <dt className="font-medium text-slate-500">Milestone</dt>
+                        <dd className="text-slate-700">{item.milestone.replaceAll('_', ' ')}</dd>
+                        <dt className="font-medium text-slate-500">Trigger date</dt>
+                        <dd className="text-slate-700">
+                          <time dateTime={item.triggerDate}>
+                            {dateFormatter.format(new Date(item.triggerDate))}
+                          </time>
+                        </dd>
+                        <dt className="font-medium text-slate-500">Alerted</dt>
+                        <dd className="text-slate-700">
+                          <time dateTime={item.createdAt}>
+                            {dateTimeFormatter.format(new Date(item.createdAt))}
+                          </time>
+                        </dd>
+                        {item.acknowledgedAt && (
+                          <>
+                            <dt className="font-medium text-slate-500">Acknowledged</dt>
+                            <dd className="text-slate-700">
+                              <time dateTime={item.acknowledgedAt}>
+                                {dateTimeFormatter.format(new Date(item.acknowledgedAt))}
+                              </time>
+                            </dd>
+                          </>
+                        )}
+                      </dl>
+
+                      {isUnread && (
+                        <button
+                          type="button"
+                          onClick={() => handleAcknowledge(item.id)}
+                          className="btn btn-secondary mt-4 w-full sm:w-auto"
+                        >
+                          <Check aria-hidden="true" className="h-4 w-4" />
+                          Mark as read
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
             )}
           </div>
 
-          {/* Footer */}
-          <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
-            <span className="text-[11px] text-slate-400">
-              Idempotent daily scanning at 02:00 UTC
-            </span>
-          </div>
+          {process.env.NODE_ENV === 'development' && (
+            <footer className="border-t border-slate-200 bg-slate-50 px-4 py-4 sm:px-5">
+              <div className="mb-3">
+                <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  <FlaskConical aria-hidden="true" className="h-4 w-4" />
+                  Demo tools
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Runs the configured demo callback. Results shown here are not persisted.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleManualScan}
+                disabled={isScanning}
+                className="btn btn-secondary w-full"
+              >
+                {isScanning ? 'Running demo…' : 'Trigger Scanner Demo'}
+              </button>
+              {scanFeedback && (
+                <div
+                  className={`mt-3 ${
+                    scanFeedback.tone === 'success' ? 'feedback-success' : 'feedback-error'
+                  }`}
+                  role={scanFeedback.tone === 'error' ? 'alert' : 'status'}
+                >
+                  {scanFeedback.message}
+                </div>
+              )}
+            </footer>
+          )}
         </div>
-      )}
-    </div>
+      </Dialog>
+    </>
   );
 };

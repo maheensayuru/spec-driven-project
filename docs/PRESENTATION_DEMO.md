@@ -2,6 +2,14 @@
 
 This guide details the exact sequence, commands, and talking points for presenting the RenewalRadar P1 Minimum Viable Product (US1 through US4).
 
+## UI redesign review notes
+
+The `feat/uiux-redesign` branch starts from presentation-hardening commit `ca3f802`. It changes frontend presentation only; backend, shared contracts, database setup, and `npm run demo:reset` are unchanged.
+
+**Important verification boundary:** the frontend at that commit contains local sample arrays and simulated mutation/scanner/invitation handlers. The redesign preserves these existing handlers and labels demo feedback explicitly. Browser creation, editing, acknowledgment, and pending invitations demonstrate UI behavior, not persisted API writes. Dashboard and obligation fixtures are separate and can show different dates or amounts. The existing login fallback is unchanged. Do not present a dashboard redirect alone as proof of an authenticated session.
+
+Use the development frontend for presentations: demo credential autofill and Demo Tools are development-only and intentionally absent from production builds.
+
 ---
 
 ## 1. Prerequisites & Clean Startup
@@ -34,7 +42,7 @@ _Healthcheck confirms readiness:_ `http://localhost:4000/health`
 
 ```bash
 cd C:\tmp\spec-driven-project
-npm run start --workspace=frontend
+npm run dev --workspace=frontend
 ```
 
 _Frontend URL:_ `http://localhost:3000`
@@ -79,14 +87,14 @@ _Safeguard_: This script verifies `NODE_ENV !== 'production'` and resets only de
 
 ### Step B: Urgent Contract Inspection
 
-- **Action**: In the **"Urgent Actions Needed"** section, locate **Fleet Commercial Auto & Liability Insurance**.
-- **Talking Point**: _"Notice the red Critical chip. This state-mandated fleet policy has a 45-day cancellation notice requirement. Our deterministic calculation engine determined that the cancellation deadline is September 16: exactly 5 days away. Missing this window commits the company to another full year."_
-- **Action**: Click **"Inspect →"** to transition smoothly to the obligations list.
+- **Action**: In **Priority attention**, locate the fleet insurance item and its Critical badge.
+- **Talking Point**: _"The priority list puts the decision date, vendor, commitment amount, and review action together."_
+- **Action**: Click **Inspect** to open the matching obligation's edit dialog. The inherited dashboard and register fixtures differ; do not claim the two screens are reading one persisted record.
 
 ### Step C: Manual Obligation Creation & Date Arithmetic
 
 - **Route**: `http://localhost:3000/obligations`
-- **Action**: Click **"+ Add Obligation"**.
+- **Action**: Click **Add Obligation**.
 - **Form Demonstration**:
   - Title: `Snowflake Data Cloud Warehouse`
   - Vendor: `Snowflake Inc.`
@@ -96,36 +104,35 @@ _Safeguard_: This script verifies `NODE_ENV !== 'production'` and resets only de
   - Start Date: `2026-01-01`
   - Renewal Date: `2026-11-30`
   - Notice Period (Days): Type `60`.
-- **Highlight**: Look at the purple highlight box. As you change Notice Period from 30 to 60, the **Calculated Cancellation Deadline** dynamically shifts from `2026-10-31` to `2026-10-01`.
-- **Action**: Click **"Save & Track Obligation"**. The obligation immediately appears in the searchable table.
+- **Highlight**: In the **Calculated cancellation deadline** preview, changing Notice period from 30 to 60 shifts the date from `2026-10-31` to `2026-10-01`.
+- **Action**: Click **Save obligation**. The obligation appears in the local searchable register. **View & edit** on smaller screens or **Edit** on desktop reopens it. These inherited local edits reset when the route reloads.
 - **Search Demo**: Type `Snowflake` in the search bar. The table filters instantly.
 
 ### Step D: Autonomous Monitoring & Idempotency
 
-- **Talking Point**: _"RenewalRadar does not depend on users remembering to log in every morning. It runs an autonomous daily background scanner."_
-- **Action**: Click the **"⚡ Trigger Scanner Demo"** button in the header (or open the Notification Bell and click "Scan Now").
-- **Highlight**:
-  - A confirmation banner appears: _"Scanner completed: 3 obligations analyzed. 1 critical alert confirmed. 0 duplicate alerts created."_
-  - The notification bell updates with an unread badge (`2`).
-  - Open the **Notification Drawer**: Point out the Critical severity alert and the milestone indicator (`7_day`).
-  - Click **"⚡ Trigger Scanner Demo"** a second time.
-  - Point out that **0 duplicate alerts** were created. Explain that every alert is protected by an immutable composite idempotency key (`org_id:obligation_id:milestone:date`).
+- **Talking Point**: _"The backend implements deadline scanning; this frontend control previews the presentation feedback."_
+- **Action**: In the dashboard's **Demo Tools** area, click **Trigger Scanner Demo**.
+- **Highlight**: The feedback explicitly says this is a demo result and does not persist alerts.
+- Open the notification bell. The drawer displays inherited example alerts in Critical / High / Medium / Low order, with milestone and trigger-date metadata.
+- Click **Mark as read** to acknowledge an alert locally and reduce the unread badge.
+- A separate **Demo tools** area inside the drawer also retains **Trigger Scanner Demo**.
+- Do not use these simulated controls as proof of backend worker execution or idempotency. Backend regression tests cover those contracts.
 
 ### Step E: Multi-Tenant RBAC & Team Governance
 
-- **Route**: `http://localhost:3000/settings/team` (click "Team & Roles" in top nav)
+- **Route**: `http://localhost:3000/settings/team` (click **Team & Roles** in the sidebar or mobile navigation)
 - **Talking Point**: _"RenewalRadar is built with multi-tenant zero trust by construction. Every query is partitioned by organization ID, and role-based access control governs all actions."_
 - **Highlight**:
   - Point out the 4 defined roles: **Owner**, **Admin**, **Member**, **Viewer**.
   - Point out the current members: Sarah Jenkins (Owner), Dave Miller (Admin), Alex Chen (Member).
-- **Action**: Click **"+ Invite Member"**. Enter `intern@acmelogistics.com` and select role **"Viewer (Read-only)"**.
-- **Action**: Click **"Send Invitation"**. Point out the generated single-use token expiring in 7 days.
-- **Talking Point**: _"Viewers can inspect obligations and dashboards, but our test suite verifies that any mutative POST, PATCH, or DELETE request from a Viewer is rejected with 403 Forbidden. Furthermore, cross-tenant lookups return 404 to prevent resource enumeration."_
+- **Action**: Click **Invite member**. Enter `intern@acmelogistics.com` and select **Viewer**.
+- **Action**: Click **Send invitation**. The inherited local demo token is displayed, and the entry appears under **Pending invitations**, not active members.
+- **Talking Point**: _"The role guide explains the existing access model. This local invitation preview is separate from the backend's tested single-use invitation contract."_
 
 ### Step F: Return to Dashboard
 
-- **Route**: Click **"Dashboard"** in the top navigation bar.
-- **Talking Point**: _"The dashboard reflects the updated state, showing that RenewalRadar maintains continuous operational oversight over all corporate commitments."_
+- **Route**: Click **Dashboard** in the sidebar or mobile navigation.
+- **Talking Point**: _"The redesigned workspace brings upcoming decisions and deadlines into one readable view."_ The dashboard retains its inherited fixtures; it does not aggregate local register edits.
 
 ---
 
@@ -158,7 +165,7 @@ Restart frontend in Terminal 3:
 
 ```bash
 cd C:\tmp\spec-driven-project
-npm run start --workspace=frontend
+npm run dev --workspace=frontend
 ```
 
 ### Scenario 4: Database records become corrupted during practice

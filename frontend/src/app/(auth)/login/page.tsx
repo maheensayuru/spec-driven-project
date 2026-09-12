@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Radar, ArrowRight, CalendarClock, ShieldCheck } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -54,89 +55,123 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-2">
-        <span className="text-3xl font-black tracking-tight text-indigo-600">RenewalRadar</span>
-        <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-          Sign in to your organization
-        </h2>
-        <p className="text-xs text-slate-500">
-          Continuous contract, subscription, and deadline monitoring.
-        </p>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-6 shadow-sm border border-slate-200 rounded-2xl sm:px-10 space-y-6">
+    <div className="min-h-screen grid lg:grid-cols-2">
+      <section className="hidden lg:flex flex-col justify-between bg-[#173e48] p-12 xl:p-16 text-white">
+        <div className="flex items-center gap-2.5 text-xl font-semibold tracking-tight">
+          <Radar size={28} aria-hidden="true" />
+          RenewalRadar
+        </div>
+        <div className="max-w-md">
+          <p className="text-xs uppercase tracking-[.18em] text-[#b8d2d6]">
+            Renewals. Deadlines. Under control.
+          </p>
+          <h1 className="mt-5 text-[44px] leading-[1.16] font-medium tracking-tight">
+            Know what needs attention.
+            <br />
+            <span className="text-[#b8d2d6]">Before it costs you.</span>
+          </h1>
+          <p className="mt-6 text-base leading-7 text-[#c6d9dc]">
+            One workspace for your contracts, subscriptions, and business obligations. Keep the next
+            decision in view.
+          </p>
+          <div className="mt-10 space-y-5 border-t border-white/20 pt-7 text-sm text-[#d9e6e8]">
+            <p className="flex gap-3 items-center">
+              <CalendarClock size={19} aria-hidden="true" />
+              Clear cancellation and renewal windows
+            </p>
+            <p className="flex gap-3 items-center">
+              <ShieldCheck size={19} aria-hidden="true" />
+              Organization-based access and team roles
+            </p>
+          </div>
+        </div>
+        <p className="text-xs text-[#b8d2d6]">Business obligation monitoring</p>
+      </section>
+      <section className="flex min-h-screen flex-col justify-center px-6 py-10 sm:px-12 bg-white">
+        <div className="w-full max-w-[380px] mx-auto">
+          <div className="mb-12 flex lg:hidden items-center gap-2 text-lg font-semibold text-[#173e48]">
+            <Radar size={26} aria-hidden="true" />
+            RenewalRadar
+          </div>
+          <p className="text-xs font-medium uppercase tracking-[.14em] text-slate-500">
+            Your workspace
+          </p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+            Welcome back
+          </h2>
+          <p className="mt-3 mb-8 text-sm leading-6 text-slate-600">
+            Sign in to stay ahead of your next deadline.
+          </p>
           {errorMessage && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
+            <div role="alert" id="login-error" className="feedback-error mb-5">
               {errorMessage}
             </div>
           )}
-
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form
+            onSubmit={handleLogin}
+            className="space-y-5"
+            aria-describedby={errorMessage ? 'login-error' : undefined}
+          >
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Business Email Address
+              <label htmlFor="email" className="field-label">
+                Business email
               </label>
               <input
+                id="email"
+                name="email"
+                autoComplete="username"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600"
+                className="field"
               />
             </div>
-
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+              <label htmlFor="password" className="field-label">
+                Password
+              </label>
               <input
+                id="password"
+                name="password"
+                autoComplete="current-password"
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600"
+                placeholder="Enter your password"
+                className="field"
               />
             </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-2.5 px-4 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors disabled:opacity-50"
-            >
+            <button type="submit" disabled={isLoading} className="btn btn-primary w-full !mt-7">
               {isLoading ? 'Authenticating...' : 'Sign In'}
+              <ArrowRight size={16} aria-hidden="true" />
             </button>
           </form>
-
-          {/* Quick Demo Credentials Assistant */}
-          <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-indigo-950 uppercase tracking-wider text-[10px]">
-                Presentation Demo Login
-              </span>
+          {process.env.NODE_ENV !== 'production' && (
+            <div className="mt-8 rounded-md border border-dashed border-slate-300 bg-slate-50 p-4">
+              <p className="text-xs font-semibold text-slate-700">
+                Demo workspace{' '}
+                <span className="font-normal text-slate-500">/ Development only</span>
+              </p>
+              <p className="mt-2 text-xs leading-5 text-slate-600">
+                Explore the presentation with the Acme Logistics account.
+              </p>
               <button
                 type="button"
                 onClick={fillDemoCredentials}
-                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline"
+                className="btn btn-secondary mt-3 w-full"
               >
                 Auto-fill Demo Credentials
               </button>
+              <p className="mt-3 text-center text-xs text-slate-500 break-all">
+                ops@acmelogistics.com
+              </p>
             </div>
-            <div className="font-mono text-slate-600 space-y-0.5 text-[11px]">
-              <div>
-                Email: <strong>ops@acmelogistics.com</strong>
-              </div>
-              <div>
-                Password: <strong>Password123!</strong>
-              </div>
-              <div className="text-[10px] text-slate-400">
-                Org: Acme Distribution Logistics (Owner)
-              </div>
-            </div>
-          </div>
+          )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

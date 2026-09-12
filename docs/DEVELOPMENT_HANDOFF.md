@@ -5,6 +5,28 @@
 **Current Branch**: `chore/presentation-hardening`  
 **Current Status**: P1 Full-Stack MVP (US1 through US4) Complete & Hardened for Demonstration
 
+### UI redesign branch addendum
+
+`feat/uiux-redesign` was created from `ca3f802` on `chore/presentation-hardening`. The historical MVP status below describes the existing backend baseline, not a claim that the current presentation frontend persists its mutations.
+
+- New shared frontend components: `AppShell`, semantic `Badge`, and native-dialog-based `Dialog`.
+- Dashboard, obligations, create/edit form, Team & Roles, notifications, and login are visually redesigned. Desktop navigation uses a compact sidebar; tablet/phone navigation uses a separate three-item row.
+- Form labels, inline error associations, invalid-field focus, modal focus restoration, reduced-motion support, touch targets, and sticky form actions are improved.
+- The inherited frontend still uses local fixtures and simulated obligation/invitation/scanner handlers. Auth handlers are intentionally unchanged. Backend integration work is outside this UI branch; US5 is not started.
+- Start the frontend with `npm run dev --workspace=frontend` for the development-only credential helper and Demo Tools. `npm run start --workspace=frontend` requires a production build and hides these development controls.
+- No UI dependencies were added. Backend tests remain 108 passing across 27 files.
+
+#### Redesign verification
+
+- `npm run test --workspace=backend`: 108 tests passed across 27 files.
+- `npm run build`: shared, backend, and frontend workspaces built successfully.
+- `npx tsc --noEmit --project frontend/tsconfig.json`: passed.
+- Prettier formatting and check passed for frontend source and updated documentation.
+- `npm run lint` exits successfully, but the workspaces have no lint scripts. This is not an ESLint validation.
+- Chromium review covered login, Dashboard, Obligations, Team & Roles, the obligation form, and notifications at 375, 768, and 1280px. No page or dialog horizontal overflow was found. Save/Cancel stay visible while form content scrolls.
+- The complete local UI demonstration was exercised: login fallback, Dashboard, urgent inspection, add/edit, scanner preview, notification acknowledgment, invitation preview, and return to Dashboard. Keyboard focus stays in dialogs and returns to the opener.
+- **Acceptance blocker:** live login returned HTTP 500 on port 3000. A backend restart reproduced PostgreSQL error `28P01`, `password authentication failed for user "renewalradar"`. Docker Desktop's engine was unavailable. The tested browser received no session cookie. No backend, database, or authentication changes were made to work around this failure; authenticated persistence remains unverified.
+
 ---
 
 ## 1. Executive Status & Test Metrics
@@ -64,13 +86,13 @@
 
 ### Frontend Architecture (Next.js 14 App Router on Port 3000)
 
-- **Layout Shell**: `frontend/src/app/layout.tsx` (Responsive header with branding, navigation links, and `NotificationDrawer`).
+- **Layout Shell**: `frontend/src/app/layout.tsx` delegates to `components/AppShell.tsx` (desktop sidebar, tablet/mobile navigation row, workspace identity, and notification drawer; no workspace navigation on login).
 - **Pages**:
   - `/`: Redirects to `/dashboard`.
   - `/login`: Professional sign-in screen with one-click demo credentials assistant.
   - `/dashboard`: Executive dashboard with KPI cards, urgent action list, and timeline.
   - `/obligations`: Filterable obligation table with search and modal creation/edit form.
-  - `/settings/team`: Team member management with role badges and invite drawer.
+  - `/settings/team`: Member list, role guide, invite modal, and separately displayed local pending invitations.
 - **Components**:
   - `ObligationForm`: Form with live cancellation deadline preview and input validation.
   - `MetricsCards`: Responsive KPI summary cards with loading/error/zero states.
@@ -96,7 +118,7 @@ npm run demo:reset
 npm run dev --workspace=backend
 
 # 4. Start Frontend (Port 3000)
-npm run start --workspace=frontend
+npm run dev --workspace=frontend
 ```
 
 ### Environment Variables (.env)

@@ -1,142 +1,153 @@
 'use client';
 
 import React from 'react';
-import { UrgentActionItem, RiskLevel } from '@renewalradar/shared';
+import { AlertTriangle, ArrowRight, CalendarClock } from 'lucide-react';
+import { UrgentActionItem } from '@renewalradar/shared';
+import { Badge } from '../ui/Badge';
 
 export interface UrgentActionsListProps {
   items?: UrgentActionItem[];
   isLoading?: boolean;
 }
 
+const dateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
 export const UrgentActionsList: React.FC<UrgentActionsListProps> = ({
   items = [],
   isLoading = false,
 }) => {
-  const getRiskBadge = (level: RiskLevel) => {
-    switch (level) {
-      case 'critical':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'high':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'medium':
-        return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'low':
-        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
-    }
-  };
-
   const formatActionType = (type: string) => {
     switch (type) {
       case 'notice_deadline_approaching':
-        return 'Cancellation Window Closing';
+        return 'Cancellation notice window is closing';
       case 'renewal_approaching':
-        return 'Contract Renewal Approaching';
+        return 'Contract renewal is approaching';
       case 'price_increase_detected':
-        return 'Price Escalation Warning';
+        return 'A price increase needs review';
       case 'pending_verification':
-        return 'Verification Required';
+        return 'Contract details need verification';
       default:
-        return 'Action Required';
+        return 'This obligation needs review';
     }
   };
 
+  const formatDeadline = (daysRemaining: number) => {
+    if (daysRemaining < 0) {
+      return `${Math.abs(daysRemaining)} ${Math.abs(daysRemaining) === 1 ? 'day' : 'days'} overdue`;
+    }
+    if (daysRemaining === 0) return 'Due today';
+    return `${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'} remaining`;
+  };
+
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+    <div className="surface h-full overflow-hidden border-t-4 border-t-red-700">
+      <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-red-50/40 px-4 py-4 sm:px-5">
         <div>
-          <h2 className="text-base font-bold text-slate-900">Urgent Actions Needed</h2>
-          <p className="text-xs text-slate-500">
-            Items requiring executive decision or cancellation notice
+          <div className="flex items-center gap-2">
+            <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0 text-red-700" />
+            <h2 className="section-heading">Priority attention</h2>
+          </div>
+          <p className="mt-1 text-sm text-slate-600">
+            Deadlines that may require a decision or cancellation notice.
           </p>
         </div>
-        <span className="text-xs font-semibold px-2.5 py-1 bg-red-50 text-red-700 rounded-full border border-red-100">
-          {items.length} {items.length === 1 ? 'Action' : 'Actions'}
-        </span>
+        <Badge tone={items.length > 0 ? 'critical' : 'neutral'}>
+          {items.length} {items.length === 1 ? 'item' : 'items'}
+        </Badge>
       </div>
 
       {isLoading ? (
-        <div className="space-y-3">
+        <div
+          className="space-y-3 p-4 sm:p-5"
+          aria-label="Loading priority actions"
+          aria-busy="true"
+        >
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 bg-slate-100 rounded-lg animate-pulse" />
+            <div key={i} className="h-32 animate-pulse rounded-md bg-slate-100" />
           ))}
         </div>
       ) : items.length === 0 ? (
-        <div className="p-8 text-center bg-slate-50 rounded-xl space-y-2 border border-dashed border-slate-200">
-          <div className="text-2xl">🛡️</div>
-          <p className="text-sm font-semibold text-slate-800">No urgent actions pending</p>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            All contracts and subscriptions are outside critical notice windows.
+        <div className="empty-state m-4 sm:m-5">
+          <p className="text-sm font-semibold text-slate-800">No urgent actions</p>
+          <p className="mt-1 text-sm text-slate-500">
+            No monitored obligations are currently inside an urgent action window.
           </p>
         </div>
       ) : (
-        <div className="divide-y divide-slate-100">
+        <ol className="divide-y divide-slate-200">
           {items.map((item) => (
-            <div
-              key={item.id}
-              className="py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:bg-slate-50/50 transition-colors rounded-lg px-2"
-            >
-              <div className="space-y-1">
-                <div className="flex items-center space-x-2">
-                  <span
-                    className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getRiskBadge(
-                      item.riskLevel,
-                    )}`}
-                  >
-                    {item.riskLevel}
-                  </span>
-                  <span className="text-xs font-medium text-slate-600">
-                    {formatActionType(item.actionType)}
-                  </span>
-                </div>
-
-                <div className="text-sm font-semibold text-slate-900">
-                  {item.title}
-                  {item.vendor && (
-                    <span className="text-xs text-slate-500 font-normal ml-1.5">
-                      ({item.vendor})
+            <li key={item.id} className="px-4 py-4 sm:px-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={item.riskLevel}>{item.riskLevel}</Badge>
+                    <span className="text-xs font-medium text-slate-600">
+                      {formatActionType(item.actionType)}
                     </span>
-                  )}
+                  </div>
+
+                  <h3 className="mt-2 text-sm font-semibold leading-5 text-slate-950">
+                    {item.title}
+                  </h3>
+                  <p className="mt-0.5 text-sm text-slate-600">
+                    Vendor:{' '}
+                    <span className="font-medium text-slate-800">
+                      {item.vendor || 'Not recorded'}
+                    </span>
+                  </p>
+
+                  <div className="mt-3 flex items-start gap-2 text-sm">
+                    <CalendarClock
+                      aria-hidden="true"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-slate-400"
+                    />
+                    <div>
+                      <span className="text-slate-600">Action deadline </span>
+                      <time className="font-semibold text-slate-900" dateTime={item.dueDate}>
+                        {dateFormatter.format(new Date(`${item.dueDate}T00:00:00Z`))}
+                      </time>
+                      <span
+                        className={`inline-block whitespace-nowrap font-semibold sm:ml-2 ${
+                          item.daysRemaining <= 7 ? 'text-red-700' : 'text-amber-700'
+                        }`}
+                      >
+                        {formatDeadline(item.daysRemaining)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="text-xs text-slate-500 flex items-center space-x-3">
-                  <span>
-                    Due: <strong className="font-mono text-slate-800">{item.dueDate}</strong>
-                  </span>
-                  <span>•</span>
-                  <span
-                    className={
-                      item.daysRemaining <= 7 ? 'text-red-600 font-bold' : 'text-slate-600'
-                    }
+                <div className="flex shrink-0 items-end justify-between gap-4 sm:flex-col sm:items-end">
+                  <div className="text-left sm:text-right">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Commitment
+                    </p>
+                    <p className="mt-0.5 text-base font-bold tabular-nums text-slate-950">
+                      {new Intl.NumberFormat('en-US', {
+                        style: 'currency',
+                        currency: item.currency,
+                        maximumFractionDigits: 0,
+                      }).format(item.amount)}
+                    </p>
+                  </div>
+                  <a
+                    href={`/obligations?inspect=${encodeURIComponent(item.obligationId)}`}
+                    aria-label={`Inspect ${item.title} obligation`}
+                    className="btn btn-secondary shrink-0"
                   >
-                    {item.daysRemaining < 0
-                      ? `Overdue by ${Math.abs(item.daysRemaining)} days`
-                      : item.daysRemaining === 0
-                        ? 'Due today!'
-                        : `${item.daysRemaining} days remaining`}
-                  </span>
+                    Inspect
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                  </a>
                 </div>
               </div>
-
-              <div className="flex items-center space-x-4">
-                <div className="text-right hidden sm:block">
-                  <span className="text-sm font-bold text-slate-900">
-                    ${item.amount.toLocaleString()}
-                  </span>
-                  <span className="text-[11px] text-slate-400 block">{item.currency}</span>
-                </div>
-
-                <a
-                  href="/obligations"
-                  className="inline-flex items-center px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
-                >
-                  Inspect →
-                </a>
-              </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ol>
       )}
     </div>
   );
