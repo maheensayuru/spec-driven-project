@@ -1,94 +1,100 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { buildServer } from '../../src/server.js';
-import { FastifyInstance } from 'fastify';
-import { SessionService } from '../../src/modules/auth/session.service.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
+import * as schema from '../../src/db/schema/index.js';
+import { resetTestDatabase, testDb, testClient } from '../helpers/test-database.js';
+
+vi.mock('../../src/db/connection.js', async () => {
+  // The async import is required because Vitest hoists mock factories above static imports.
+  const { testDb } = await import('../helpers/test-database.js');
+  return { db: testDb };
+});
+
 import { NotificationService } from '../../src/modules/notifications/notification.service.js';
 
-describe('Notification & Alert Monitoring API Contract Tests (Task T036)', () => {
-  let app: FastifyInstance;
-  const orgId = '99999999-8888-7777-6666-555555555555';
-  let sessionCookie: string;
+const orgId = '99999999-8888-4777-8666-555555555555';
+const otherOrgId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+const userId = '11111111-aaaa-4bbb-8ccc-222222222222';
+const obligationId = '33333333-aaaa-4bbb-8ccc-444444444444';
+const otherObligationId = '55555555-aaaa-4bbb-8ccc-666666666666';
+const alertId = '77777777-aaaa-4bbb-8ccc-888888888888';
+const otherAlertId = '99999999-aaaa-4bbb-8ccc-000000000000';
 
-  beforeAll(async () => {
-    const token = SessionService.encryptSession({
-      userId: 'user-notif-1',
-      organizationId: orgId,
-      role: 'admin',
-      email: 'alerts@renewalradar.corp',
-      createdAt: Date.now(),
-    });
-    sessionCookie = `rr_session=${token}`;
+async function seedAlerts(): Promise<void> {
+  await testClient.query(
+    `INSERT INTO organizations (id, name, slug) VALUES
+      ($1, 'Alerts organization', 'alerts-organization'),
+      ($2, 'Other alerts organization', 'other-alerts-organization')`,
+    [orgId, otherOrgId],
+  );
+  await testClient.query(
+    `INSERT INTO users (id, email, password_hash, full_name)
+     VALUES ($1, 'alerts@example.com', 'unused', 'Alerts User')`,
+    [userId],
+  );
+  await testClient.query(
+    `INSERT INTO obligations
+      (id, organization_id, title, type, status, amount, currency, billing_frequency,
+       renewal_date, notice_period_days, cancellation_deadline, auto_renew, risk_level)
+     VALUES
+      ($1, $2, 'Primary obligation', 'subscription', 'active', 100, 'USD', 'annual',
+       '2026-10-01', 30, '2026-09-01', true, 'high'),
+      ($3, $4, 'Other obligation', 'subscription', 'active', 100, 'USD', 'annual',
+       '2026-10-01', 30, '2026-09-01', true, 'high')`,
+    [obligationId, orgId, otherObligationId, otherOrgId],
+  );
+  await testClient.query(
+    `INSERT INTO obligation_alerts
+      (id, organization_id, obligation_id, milestone, trigger_date, priority,
+       idempotency_key, in_app_delivered, email_delivered)
+     VALUES
+      ($1, $2, $3, '14_day', '2026-09-05', 'high', $4, true, false),
+      ($5, $6, $7, '7_day', '2026-09-05', 'critical', $8, true, false)`,
+    [
+      alertId,
+      orgId,
+      obligationId,
+      `${orgId}:${obligationId}:14_day:2026-09-05`,
+      otherAlertId,
+      otherOrgId,
+      otherObligationId,
+      `${otherOrgId}:${otherObligationId}:7_day:2026-09-05`,
+    ],
+  );
+}
 
-    app = buildServer();
-    await app.ready();
-
-    // Register a sample alert in memory
-    NotificationService.registerMockAlert({
-      id: 'alert-sample-1',
-      organizationId: orgId,
-      obligationId: 'obl-123',
-      milestone: '14_day',
-      triggerDate: '2026-09-05',
-      priority: 'critical',
-      idempotencyKey: `${orgId}:obl-123:14_day:2026-09-05`,
-      inAppDelivered: true,
-      emailDelivered: false,
-      acknowledgedAt: null,
-      acknowledgedBy: null,
-      createdAt: new Date(),
-    });
+describe('notification persistence', () => {
+  beforeEach(async () => {
+    await resetTestDatabase();
+    await seedAlerts();
   });
 
-  afterAll(async () => {
-    await app.close();
+  it('lists only alerts belonging to the requested organization', async () => {
+    const alerts = await NotificationService.getOrganizationAlerts(orgId);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({ id: alertId, organizationId: orgId });
   });
 
-  it('rejects unauthenticated requests to notifications endpoint with 401', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: '/api/v1/notifications',
-    });
-    expect(res.statusCode).toBe(401);
+  it('persists acknowledgement without permitting cross-tenant access', async () => {
+    expect(await NotificationService.acknowledgeAlert(otherOrgId, alertId, userId)).toBe(false);
+    expect(await NotificationService.acknowledgeAlert(orgId, alertId, userId)).toBe(true);
+
+    const [persisted] = await testDb
+      .select()
+      .from(schema.obligationAlerts)
+      .where(eq(schema.obligationAlerts.id, alertId));
+    expect(persisted?.acknowledgedBy).toBe(userId);
+    expect(persisted?.acknowledgedAt).toBeInstanceOf(Date);
   });
 
-  it('returns list of alerts and unread count on GET /api/v1/notifications (200 OK)', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: '/api/v1/notifications',
-      headers: { cookie: sessionCookie },
-    });
+  it('propagates notification database failures instead of fabricating success', async () => {
+    const [alert] = await NotificationService.getOrganizationAlerts(orgId);
+    expect(alert).toBeDefined();
 
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(body.items.length).toBeGreaterThan(0);
-    expect(body.unreadCount).toBeGreaterThan(0);
-  });
-
-  it('acknowledges an alert on POST /api/v1/notifications/:id/acknowledge (200 OK)', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/notifications/alert-sample-1/acknowledge',
-      headers: { cookie: sessionCookie },
-    });
-
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(body.success).toBe(true);
-  });
-
-  it('executes manual development scan on POST /api/v1/notifications/scan (200 OK)', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/notifications/scan',
-      headers: { cookie: sessionCookie },
-      payload: {
-        referenceDate: '2026-09-05',
-      },
-    });
-
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(body.scanned).toBeDefined();
-    expect(body.alertsCreated).toBeDefined();
+    await testClient.exec('DROP TABLE obligation_alerts');
+    await expect(NotificationService.getOrganizationAlerts(orgId)).rejects.toThrow();
+    await expect(NotificationService.acknowledgeAlert(orgId, alertId, userId)).rejects.toThrow();
+    await expect(
+      NotificationService.dispatchEmailAlert('recipient@example.com', alert!, 'Primary obligation'),
+    ).rejects.toThrow();
   });
 });

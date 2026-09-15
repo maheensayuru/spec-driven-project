@@ -65,7 +65,10 @@ export const DeadlineTimeline: React.FC<DeadlineTimelineProps> = ({
 
     return Object.entries(groups)
       .filter(([, items]) => items.length > 0)
-      .map(([label, items]) => ({ label, items }));
+      .map(([label, items]) => ({
+        label,
+        items: items.sort((a, b) => a.cancellationDeadline.localeCompare(b.cancellationDeadline)),
+      }));
   }, [obligations]);
 
   return (
@@ -101,7 +104,12 @@ export const DeadlineTimeline: React.FC<DeadlineTimelineProps> = ({
           </p>
         </div>
       ) : (
-        <div className="space-y-6 p-4 sm:p-5">
+        <div
+          className="space-y-6 p-4 sm:p-5 lg:max-h-[32rem] lg:overflow-y-auto"
+          tabIndex={0}
+          role="region"
+          aria-label="Deadline timeline entries"
+        >
           {groupedTimeline.map((group) => (
             <section
               key={group.label}

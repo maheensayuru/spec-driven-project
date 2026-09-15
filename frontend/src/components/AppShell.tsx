@@ -1,10 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { LayoutDashboard, Files, Users, Radar, ArrowUpRight, Building2 } from 'lucide-react';
 import { NotificationDrawer } from './notifications/NotificationDrawer';
+import { useSession } from './SessionProvider';
+import { apiRequest } from '../lib/api';
 
 const navigation = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -14,7 +16,42 @@ const navigation = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (pathname === '/login' || pathname === '/') return <main id="main-content">{children}</main>;
+  const router = useRouter();
+  const { session, isLoading, error, retry } = useSession();
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const signOut = async () => {
+    setSigningOut(true);
+    setSignOutError(null);
+    try {
+      await apiRequest('/auth/logout', { method: 'POST' });
+      router.replace('/login');
+    } catch (failure: unknown) {
+      setSignOutError(failure instanceof Error ? failure.message : 'Unable to sign out.');
+    } finally {
+      setSigningOut(false);
+    }
+  };
+  if (pathname === '/login' || pathname === '/invite/accept')
+    return <main id="main-content">{children}</main>;
+  if (isLoading)
+    return (
+      <main className="empty-state" role="status">
+        Verifying your workspace session…
+      </main>
+    );
+  if (error)
+    return (
+      <main className="mx-auto mt-16 max-w-lg p-5">
+        <div className="feedback-error" role="alert">
+          {error}
+        </div>
+        <button className="btn btn-secondary mt-4" onClick={retry}>
+          Try again
+        </button>
+      </main>
+    );
+  if (!session) return null;
   const current = navigation.find((item) => pathname.startsWith(item.href));
   return (
     <div className="min-h-screen lg:pl-[216px]">
@@ -50,18 +87,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="flex h-8 w-8 items-center justify-center rounded-md bg-white border border-slate-200 text-slate-600">
               <Building2 size={16} aria-hidden="true" />
             </span>
-            <div>
-              <p className="text-xs font-medium">Acme Logistics</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Presentation workspace</p>
+            <div className="min-w-0">
+              <p className="text-xs font-medium">Organization workspace</p>
+              <p className="text-[11px] text-slate-500 mt-0.5 capitalize">{session.role} access</p>
             </div>
           </div>
-          <Link
-            href="/login"
-            className="mt-4 flex items-center justify-between py-2 text-xs text-slate-600 hover:text-slate-900"
+          <button
+            type="button"
+            onClick={signOut}
+            disabled={signingOut}
+            className="mt-4 flex w-full items-center justify-between py-2 text-xs text-slate-600 hover:text-slate-900"
           >
-            Sign in / Switch account
+            {signingOut ? 'Signing out…' : 'Sign out'}
             <ArrowUpRight size={14} aria-hidden="true" />
-          </Link>
+          </button>
         </div>
       </aside>
       <header className="border-b border-slate-200 bg-white">
@@ -78,15 +117,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="text-slate-800">{current?.label ?? 'Overview'}</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden sm:block text-xs text-slate-500">Acme Logistics</span>
+            <span
+              className="hidden sm:block max-w-64 truncate text-xs text-slate-500"
+              title={session.email}
+            >
+              {session.email}
+            </span>
             <NotificationDrawer />
-            <Link
-              href="/login"
-              aria-label="Account sign in"
+            <button
+              type="button"
+              onClick={signOut}
+              disabled={signingOut}
+              aria-label="Sign out"
+              title={`Sign out ${session.email}`}
               className="flex h-11 w-11 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600"
             >
-              AL
-            </Link>
+              {session.email.slice(0, 2).toUpperCase()}
+            </button>
           </div>
         </div>
         <nav
@@ -110,6 +157,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         tabIndex={-1}
         className="mx-auto max-w-[1480px] px-4 py-7 sm:px-7 sm:py-8 lg:px-9 lg:py-9"
       >
+        {signOutError && (
+          <div className="feedback-error mb-4" role="alert">
+            {signOutError}
+          </div>
+        )}
         {children}
       </main>
     </div>

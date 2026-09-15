@@ -31,8 +31,8 @@ export async function obligationRoutes(server: FastifyInstance): Promise<void> {
       const authReq = request as AuthenticatedRequest;
       const validated = CreateObligationRequestSchema.parse(request.body);
       // Quota Enforcement (FR-024 & FR-025)
-      const existing = await authReq.tenant!.obligations.list(1000);
-      const quota = EntitlementService.checkObligationQuota(existing.length, 'free');
+      const existing = await authReq.tenant!.obligations.list({ limit: 1000 });
+      const quota = EntitlementService.checkObligationQuota(existing.total, 'free');
       if (!quota.allowed) {
         return reply.status(403).send({
           statusCode: 403,
@@ -60,9 +60,10 @@ export async function obligationRoutes(server: FastifyInstance): Promise<void> {
 
     const list = await ObligationService.listObligations(authReq.tenant!, query);
     return {
-      items: list,
+      items: list.items,
       page: query.page,
       limit: query.limit,
+      total: list.total,
     };
   });
 

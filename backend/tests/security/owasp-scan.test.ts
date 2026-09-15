@@ -22,11 +22,12 @@ describe('OWASP Top 10 Security Audit (Constitution Security Standards & Task T0
       tenantContextFactory: (organizationId: string) => ({
         organizationId,
         obligations: {
+          async findOrCreateVendor() { throw new Error('Unexpected vendor lookup in this test'); },
           async findById() {
             return null;
           },
           async list() {
-            return [];
+            return { items: [], total: 0 };
           },
           async create(data) {
             // Emulates safe parameterized insertion

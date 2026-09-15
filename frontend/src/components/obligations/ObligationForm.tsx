@@ -13,6 +13,7 @@ export interface ObligationFormProps {
   onSubmit: (data: CreateObligationRequest) => Promise<void>;
   onCancel?: () => void;
   isLoading?: boolean;
+  readOnly?: boolean;
 }
 
 export const ObligationForm: React.FC<ObligationFormProps> = ({
@@ -20,6 +21,7 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
   onSubmit,
   onCancel,
   isLoading = false,
+  readOnly = false,
 }) => {
   const [title, setTitle] = useState(initialData?.title ?? '');
   const [type, setType] = useState<ObligationType>(initialData?.type ?? 'subscription');
@@ -103,7 +105,7 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submissionLockRef.current || isLoading) return;
+    if (readOnly || submissionLockRef.current || isLoading) return;
 
     setSubmitError(null);
     const validationErrors = validate();
@@ -157,7 +159,7 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
         </div>
       )}
 
-      <fieldset className="space-y-4">
+      <fieldset disabled={readOnly} className="space-y-4">
         <legend className="section-heading">Basic information</legend>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
@@ -221,7 +223,7 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
         </div>
       </fieldset>
 
-      <fieldset className="space-y-4 border-t border-slate-200 pt-5">
+      <fieldset disabled={readOnly} className="space-y-4 border-t border-slate-200 pt-5">
         <legend className="section-heading">Financial details</legend>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
@@ -288,7 +290,7 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
         </div>
       </fieldset>
 
-      <fieldset className="space-y-4 border-t border-slate-200 pt-5">
+      <fieldset disabled={readOnly} className="space-y-4 border-t border-slate-200 pt-5">
         <legend className="section-heading">Dates &amp; notice</legend>
         <div className="mt-3 grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="min-w-0">
@@ -406,7 +408,7 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
         </div>
       </fieldset>
 
-      <fieldset className="space-y-4 border-t border-slate-200 pt-5">
+      <fieldset disabled={readOnly} className="space-y-4 border-t border-slate-200 pt-5">
         <legend className="section-heading">Renewal settings &amp; notes</legend>
         <div className="mt-3 flex items-start gap-2">
           <input
@@ -464,12 +466,14 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
             disabled={isSubmitting}
             className="btn btn-secondary"
           >
-            Cancel
+            {readOnly ? 'Close' : 'Cancel'}
           </button>
         )}
-        <button type="submit" disabled={isSubmitting} className="btn btn-primary">
-          {isSubmitting ? 'Saving...' : initialData ? 'Update obligation' : 'Save obligation'}
-        </button>
+        {!readOnly && (
+          <button type="submit" disabled={isSubmitting} className="btn btn-primary">
+            {isSubmitting ? 'Saving...' : initialData ? 'Update obligation' : 'Save obligation'}
+          </button>
+        )}
       </div>
     </form>
   );

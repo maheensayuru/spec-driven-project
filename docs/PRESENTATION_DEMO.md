@@ -2,13 +2,11 @@
 
 This guide details the exact sequence, commands, and talking points for presenting the RenewalRadar P1 Minimum Viable Product (US1 through US4).
 
-## UI redesign review notes
+### Runtime integration update
 
-The `feat/uiux-redesign` branch starts from presentation-hardening commit `ca3f802`. It changes frontend presentation only; backend, shared contracts, database setup, and `npm run demo:reset` are unchanged.
+`fix/runtime-integration` connects the redesigned frontend to real backend APIs. All dashboard metrics, obligation CRUD, search/filter, notifications, scanner, team members, and invitations now read from and write to PostgreSQL. Created obligations, alerts, and acknowledgments persist across API restarts. The PGlite fallback remains available when Docker is not running.
 
-**Important verification boundary:** the frontend at that commit contains local sample arrays and simulated mutation/scanner/invitation handlers. The redesign preserves these existing handlers and labels demo feedback explicitly. Browser creation, editing, acknowledgment, and pending invitations demonstrate UI behavior, not persisted API writes. Dashboard and obligation fixtures are separate and can show different dates or amounts. The existing login fallback is unchanged. Do not present a dashboard redirect alone as proof of an authenticated session.
-
-Use the development frontend for presentations: demo credential autofill and Demo Tools are development-only and intentionally absent from production builds.
+Use the development frontend (`npm run dev --workspace=frontend`) for presentations: demo credential autofill and Demo Tools are development-only and intentionally absent from production builds.
 
 ---
 
@@ -80,16 +78,16 @@ _Safeguard_: This script verifies `NODE_ENV !== 'production'` and resets only de
 - **Route**: `http://localhost:3000/dashboard`
 - **Talking Point**: _"Small and medium businesses manage dozens of vendor contracts, leases, and policies. Important deadlines get buried. RenewalRadar answers one central question every morning: What do I need to do today before money or compliance are lost?"_
 - **Highlight**:
-  - **Active Obligations**: 3 monitored contracts.
-  - **Upcoming Renewals**: 1 renewal within 30 days.
-  - **Urgent Action Items**: 2 items requiring executive attention.
-  - **Annual Committed Spend**: $90,820 normalized across all active vendors.
+  - **Active Obligations**: seeded obligations from `npm run demo:reset`.
+  - **Upcoming Renewals**: renewals within 30 days.
+  - **Urgent Action Items**: items requiring executive attention.
+  - **Annual Committed Spend**: normalized across all active vendors.
 
 ### Step B: Urgent Contract Inspection
 
 - **Action**: In **Priority attention**, locate the fleet insurance item and its Critical badge.
 - **Talking Point**: _"The priority list puts the decision date, vendor, commitment amount, and review action together."_
-- **Action**: Click **Inspect** to open the matching obligation's edit dialog. The inherited dashboard and register fixtures differ; do not claim the two screens are reading one persisted record.
+- **Action**: Click **Inspect** to open the matching obligation's edit dialog. The dashboard and obligation register read from the same PostgreSQL data.
 
 ### Step C: Manual Obligation Creation & Date Arithmetic
 
@@ -105,18 +103,17 @@ _Safeguard_: This script verifies `NODE_ENV !== 'production'` and resets only de
   - Renewal Date: `2026-11-30`
   - Notice Period (Days): Type `60`.
 - **Highlight**: In the **Calculated cancellation deadline** preview, changing Notice period from 30 to 60 shifts the date from `2026-10-31` to `2026-10-01`.
-- **Action**: Click **Save obligation**. The obligation appears in the local searchable register. **View & edit** on smaller screens or **Edit** on desktop reopens it. These inherited local edits reset when the route reloads.
-- **Search Demo**: Type `Snowflake` in the search bar. The table filters instantly.
+- **Action**: Click **Save obligation**. The obligation is persisted to PostgreSQL and appears in the searchable register. **View & edit** on smaller screens or **Edit** on desktop reopens it.
+- **Search Demo**: Type `Snowflake` in the search bar. The table filters instantly against the real backend.
 
 ### Step D: Autonomous Monitoring & Idempotency
 
-- **Talking Point**: _"The backend implements deadline scanning; this frontend control previews the presentation feedback."_
+- **Talking Point**: _"RenewalRadar's deadline scanner runs automatically. This demo control triggers it manually to show real-time alert creation."_
 - **Action**: In the dashboard's **Demo Tools** area, click **Trigger Scanner Demo**.
-- **Highlight**: The feedback explicitly says this is a demo result and does not persist alerts.
-- Open the notification bell. The drawer displays inherited example alerts in Critical / High / Medium / Low order, with milestone and trigger-date metadata.
-- Click **Mark as read** to acknowledge an alert locally and reduce the unread badge.
-- A separate **Demo tools** area inside the drawer also retains **Trigger Scanner Demo**.
-- Do not use these simulated controls as proof of backend worker execution or idempotency. Backend regression tests cover those contracts.
+- **Highlight**: The scanner evaluates real obligations and creates persisted alerts. Running it again produces zero duplicates (idempotency).
+- Open the notification bell. The drawer displays real alerts in Critical / High / Medium / Low order, with milestone and trigger-date metadata.
+- Click **Mark as read** to acknowledge an alert. The acknowledgment persists in PostgreSQL and reduces the unread badge.
+- A separate **Demo tools** area inside the drawer also provides **Trigger Scanner Demo**.
 
 ### Step E: Multi-Tenant RBAC & Team Governance
 
@@ -126,13 +123,13 @@ _Safeguard_: This script verifies `NODE_ENV !== 'production'` and resets only de
   - Point out the 4 defined roles: **Owner**, **Admin**, **Member**, **Viewer**.
   - Point out the current members: Sarah Jenkins (Owner), Dave Miller (Admin), Alex Chen (Member).
 - **Action**: Click **Invite member**. Enter `intern@acmelogistics.com` and select **Viewer**.
-- **Action**: Click **Send invitation**. The inherited local demo token is displayed, and the entry appears under **Pending invitations**, not active members.
-- **Talking Point**: _"The role guide explains the existing access model. This local invitation preview is separate from the backend's tested single-use invitation contract."_
+- **Action**: Click **Send invitation**. The invitation is created in PostgreSQL with a 7-day expiry. The entry appears under **Pending invitations**, not active members.
+- **Talking Point**: _"The role guide explains the access model. Invitations are single-use tokens that expire after 7 days. Accepting one creates a real user account with the assigned role."_
 
 ### Step F: Return to Dashboard
 
 - **Route**: Click **Dashboard** in the sidebar or mobile navigation.
-- **Talking Point**: _"The redesigned workspace brings upcoming decisions and deadlines into one readable view."_ The dashboard retains its inherited fixtures; it does not aggregate local register edits.
+- **Talking Point**: _"The redesigned workspace brings upcoming decisions and deadlines into one readable view."_
 
 ---
 

@@ -78,9 +78,10 @@ describe('Multi-Tenant Isolation & Zero Trust (Constitution Principle II & Task 
             }
             return null;
           },
+          async findOrCreateVendor() { throw new Error('Unexpected vendor lookup in this test'); },
           async list() {
             if (organizationId === orgA) {
-              return [
+              const items = [
                 {
                   id: orgAObId,
                   organizationId: orgA,
@@ -107,8 +108,9 @@ describe('Multi-Tenant Isolation & Zero Trust (Constitution Principle II & Task 
                   updatedAt: new Date(),
                 },
               ];
+              return { items, total: items.length };
             }
-            return [];
+            return { items: [], total: 0 };
           },
           async create() {
             throw new Error('Not implemented in mock');

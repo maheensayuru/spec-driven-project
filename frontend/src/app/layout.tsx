@@ -1,6 +1,7 @@
 import './globals.css';
 import React from 'react';
 import { AppShell } from '../components/AppShell';
+import { SessionProvider } from '../components/SessionProvider';
 
 export const metadata = {
   title: 'RenewalRadar | Business Obligation & Contract Monitoring',
@@ -12,7 +13,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="antialiased">
-        <AppShell>{children}</AppShell>
+        <SessionProvider>
+          <AppShell>{children}</AppShell>
+        </SessionProvider>
       </body>
     </html>
   );

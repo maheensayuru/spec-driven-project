@@ -1,10 +1,22 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Obligation } from '../../../src/db/schema/obligations.js';
+import { resetTestDatabase, testClient } from '../../helpers/test-database.js';
+
+vi.mock('../../../src/db/connection.js', async () => {
+  // The async import is required because Vitest hoists mock factories above static imports.
+  const { testDb } = await import('../../helpers/test-database.js');
+  return { db: testDb };
+});
+
 import { DeadlineScannerService } from '../../../src/modules/monitoring/scanner.service.js';
-import { Obligation } from '../../../src/db/schema/obligations.js';
 
 describe('Deadline Monitoring Scanner & Alert Idempotency (Constitution Principle IV & FR-010-FR-013)', () => {
   const refDate = '2026-09-05';
   const orgId = '11111111-1111-1111-1111-111111111111';
+
+  beforeEach(async () => {
+    await resetTestDatabase();
+  });
 
   function mockObligation(overrides: Partial<Obligation>): Obligation {
     return {
@@ -86,5 +98,45 @@ describe('Deadline Monitoring Scanner & Alert Idempotency (Constitution Principl
     );
     expect(secondScan.length).toBe(0);
     expect(existingKeys.size).toBe(2);
+  });
+
+  it('persists idempotent alerts while scanning only the requested organization', async () => {
+    const otherOrgId = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
+    await testClient.query(
+      `INSERT INTO organizations (id, name, slug) VALUES
+        ($1, 'Scanner organization', 'scanner-organization'),
+        ($2, 'Other scanner organization', 'other-scanner-organization')`,
+      [orgId, otherOrgId],
+    );
+    await testClient.query(
+      `INSERT INTO obligations
+        (organization_id, title, type, status, amount, currency, billing_frequency,
+         renewal_date, notice_period_days, cancellation_deadline, auto_renew, risk_level)
+       VALUES
+        ($1, 'Scanned obligation', 'subscription', 'active', 100, 'USD', 'annual',
+         '2026-10-01', 30, '2026-09-19', true, 'high'),
+        ($2, 'Other obligation', 'subscription', 'active', 100, 'USD', 'annual',
+         '2026-10-01', 30, '2026-09-19', true, 'high')`,
+      [orgId, otherOrgId],
+    );
+
+    await expect(DeadlineScannerService.runScan(orgId, refDate)).resolves.toEqual({
+      scanned: 1,
+      alertsCreated: 1,
+    });
+    await expect(DeadlineScannerService.runScan(orgId, refDate)).resolves.toEqual({
+      scanned: 1,
+      alertsCreated: 0,
+    });
+
+    const alerts = await testClient.query<{ organization_id: string }>(
+      'SELECT organization_id FROM obligation_alerts',
+    );
+    expect(alerts.rows).toEqual([{ organization_id: orgId }]);
+  });
+
+  it('propagates database failures instead of reporting a successful empty scan', async () => {
+    await testClient.exec('DROP TABLE obligations CASCADE');
+    await expect(DeadlineScannerService.runScan(orgId, refDate)).rejects.toThrow();
   });
 });

@@ -23,11 +23,14 @@ describe('Document Ingestion API Contract Tests (User Story 5 & FR-014-FR-018)',
       tenantContextFactory: (organizationId: string) => ({
         organizationId,
         obligations: {
+          async findOrCreateVendor(name) {
+            return { id: 'vendor-ingestion-test', organizationId, name, contactEmail: null, website: null, notes: null, createdAt: new Date(0), updatedAt: new Date(0) };
+          },
           async findById() {
             return null;
           },
           async list() {
-            return [];
+            return { items: [], total: 0 };
           },
           async create(data) {
             return {

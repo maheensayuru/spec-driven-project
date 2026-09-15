@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { OrganizationService } from './organization.service.js';
+import { InvitationError, OrganizationService } from './organization.service.js';
 import { requirePermission } from '../auth/rbac.service.js';
 import { AuthenticatedRequest } from '../../server.js';
 
@@ -39,7 +39,8 @@ export async function organizationRoutes(server: FastifyInstance): Promise<void>
         organization: result.organization,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to accept invitation';
+      if (!(err instanceof InvitationError)) throw err;
+      const message = err.message;
       return reply.status(400).send({
         statusCode: 400,
         error: 'Bad Request',

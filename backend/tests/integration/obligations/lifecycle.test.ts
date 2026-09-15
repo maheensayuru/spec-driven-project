@@ -21,11 +21,25 @@ function createMockTenantContext(organizationId: string): TenantContext {
       return item;
     },
 
-    async list(limit = 50, offset = 0): Promise<Obligation[]> {
-      const items = Array.from(store.values())
-        .filter((i) => i.organizationId === organizationId && !i.deletedAt)
-        .slice(offset, offset + limit);
-      return items;
+    async list(filter = {}) {
+      const items = Array.from(store.values()).filter(
+        (item) => item.organizationId === organizationId && !item.deletedAt,
+      );
+      const offset = filter.offset ?? 0;
+      const limit = filter.limit ?? 50;
+      return { items: items.slice(offset, offset + limit), total: items.length };
+    },
+    async findOrCreateVendor(name: string) {
+      return {
+        id: `vendor-${name}`,
+        organizationId,
+        name,
+        contactEmail: null,
+        website: null,
+        notes: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
     },
 
     async create(

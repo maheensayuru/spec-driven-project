@@ -1,37 +1,29 @@
 # RenewalRadar: Engineering & Architecture Development Handoff
 
 **Project**: RenewalRadar (B2B SaaS Contract & Obligation Monitoring Platform)  
-**Date**: 2026-09-05  
-**Current Branch**: `chore/presentation-hardening`  
-**Current Status**: P1 Full-Stack MVP (US1 through US4) Complete & Hardened for Demonstration
+**Date**: 2026-09-15  
+**Current Branch**: `fix/runtime-integration`  
+**Current Status**: P1 Full-Stack MVP (US1 through US4) Complete, Hardened, and Runtime-Verified
 
-### UI redesign branch addendum
+### Runtime integration branch addendum
 
-`feat/uiux-redesign` was created from `ca3f802` on `chore/presentation-hardening`. The historical MVP status below describes the existing backend baseline, not a claim that the current presentation frontend persists its mutations.
+`fix/runtime-integration` was created from `feat/uiux-redesign` (commit `ca3f802` base). The redesigned frontend now connects to real backend APIs with no local fixtures, simulated handlers, or sample data arrays.
 
-- New shared frontend components: `AppShell`, semantic `Badge`, and native-dialog-based `Dialog`.
-- Dashboard, obligations, create/edit form, Team & Roles, notifications, and login are visually redesigned. Desktop navigation uses a compact sidebar; tablet/phone navigation uses a separate three-item row.
-- Form labels, inline error associations, invalid-field focus, modal focus restoration, reduced-motion support, touch targets, and sticky form actions are improved.
-- The inherited frontend still uses local fixtures and simulated obligation/invitation/scanner handlers. Auth handlers are intentionally unchanged. Backend integration work is outside this UI branch; US5 is not started.
-- Start the frontend with `npm run dev --workspace=frontend` for the development-only credential helper and Demo Tools. `npm run start --workspace=frontend` requires a production build and hides these development controls.
-- No UI dependencies were added. Backend tests remain 108 passing across 27 files.
-
-#### Redesign verification
-
-- `npm run test --workspace=backend`: 108 tests passed across 27 files.
-- `npm run build`: shared, backend, and frontend workspaces built successfully.
-- `npx tsc --noEmit --project frontend/tsconfig.json`: passed.
-- Prettier formatting and check passed for frontend source and updated documentation.
-- `npm run lint` exits successfully, but the workspaces have no lint scripts. This is not an ESLint validation.
-- Chromium review covered login, Dashboard, Obligations, Team & Roles, the obligation form, and notifications at 375, 768, and 1280px. No page or dialog horizontal overflow was found. Save/Cancel stay visible while form content scrolls.
-- The complete local UI demonstration was exercised: login fallback, Dashboard, urgent inspection, add/edit, scanner preview, notification acknowledgment, invitation preview, and return to Dashboard. Keyboard focus stays in dialogs and returns to the opener.
-- **Acceptance blocker:** live login returned HTTP 500 on port 3000. A backend restart reproduced PostgreSQL error `28P01`, `password authentication failed for user "renewalradar"`. Docker Desktop's engine was unavailable. The tested browser received no session cookie. No backend, database, or authentication changes were made to work around this failure; authenticated persistence remains unverified.
+- All frontend data flows (Dashboard metrics, obligations CRUD, search/filter, notifications, scanner, team members, invitations, RBAC enforcement) call real backend API endpoints and persist to PostgreSQL.
+- The PGlite embedded fallback is preserved: when Docker/PostgreSQL is unavailable, the backend automatically uses PGlite with durable on-disk persistence. An invalid PostgreSQL password correctly fails rather than silently falling back.
+- `npm run test --workspace=backend`: **110 tests** passed across **28 files**.
+- `npm run build`: shared, backend, and frontend workspaces built successfully (Next.js compiled, types valid).
+- Prettier formatting passed for all frontend source files.
+- Responsive verification at 375px, 768px, and 1280px: zero horizontal overflow on any page, form dialog, or notification drawer.
+- Full browser journey verified against real PostgreSQL: login → dashboard → obligation create → edit → scanner → alert acknowledgment → team/RBAC → viewer invitation acceptance → viewer write restriction (403) → invitation reuse rejection (400).
+- Created obligations, edited amounts/vendors, scanner alerts, and acknowledgments all survive API restarts and are verified directly in PostgreSQL.
+- **Previous acceptance blocker resolved:** the HTTP 500 / `28P01` PostgreSQL authentication error was caused by Docker Desktop mapping the container to port 5433 instead of the expected 5432. The `DATABASE_URL` in `.env` now uses port 5433 to match the running Docker configuration. No authentication logic, schema, or backend code was changed.
 
 ---
 
 ## 1. Executive Status & Test Metrics
 
-- **Backend Automated Test Suite**: **108 tests passing** across 27 test files (0 failures).
+- **Backend Automated Test Suite**: **110 tests passing** across 28 test files (0 failures).
 - **Workspace Build**: Success across `@renewalradar/shared`, `@renewalradar/backend`, and `@renewalradar/frontend` (Next.js 14).
 - **Performance Benchmark (SC-006 & T039)**: p95 latency of **4.19 ms** for 500 active obligations (SLA target: $< 350\text{ms}$).
 - **Security Check**: Clean Git history. 0 tokens or credentials committed. Zero-trust multi-tenant isolation enforced.
@@ -92,7 +84,7 @@
   - `/login`: Professional sign-in screen with one-click demo credentials assistant.
   - `/dashboard`: Executive dashboard with KPI cards, urgent action list, and timeline.
   - `/obligations`: Filterable obligation table with search and modal creation/edit form.
-  - `/settings/team`: Member list, role guide, invite modal, and separately displayed local pending invitations.
+  - `/settings/team`: Member list, role guide, invite modal, and pending invitations from the real backend.
 - **Components**:
   - `ObligationForm`: Form with live cancellation deadline preview and input validation.
   - `MetricsCards`: Responsive KPI summary cards with loading/error/zero states.
@@ -128,7 +120,7 @@ NODE_ENV=development
 PORT=4000
 FRONTEND_URL=http://localhost:3000
 SESSION_SECRET=renewalradar_super_secure_session_secret_32_bytes_min
-DATABASE_URL=postgresql://renewalradar:local_dev_password@localhost:5432/renewalradar_dev
+DATABASE_URL=postgresql://renewalradar:local_dev_password@localhost:5433/renewalradar_dev
 REDIS_URL=redis://localhost:6379
 S3_ENDPOINT=http://localhost:9000
 S3_BUCKET=renewalradar-documents

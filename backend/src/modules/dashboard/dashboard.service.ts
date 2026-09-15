@@ -32,7 +32,14 @@ export class DashboardService {
     tenant: TenantContext,
     reportingCurrency = 'USD',
   ): Promise<DashboardMetricsResponse> {
-    const obligations = await tenant.obligations.list(500, 0);
+    const firstPage = await tenant.obligations.list({ limit: 500 });
+    const obligations = firstPage.items;
+    for (let offset = obligations.length; offset < firstPage.total;) {
+      const page = await tenant.obligations.list({ limit: 500, offset });
+      if (page.items.length === 0) break;
+      obligations.push(...page.items);
+      offset += page.items.length;
+    }
 
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);

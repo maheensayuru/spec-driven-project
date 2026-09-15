@@ -1,7 +1,7 @@
 import { db } from '../../db/connection.js';
 import * as schema from '../../db/schema/index.js';
 import { eq, and, desc } from 'drizzle-orm';
-import { ObligationAlert } from '../../db/schema/alerts.js';
+import type { ObligationAlert } from '../../db/schema/alerts.js';
 
 export interface EmailMessage {
   to: string;
@@ -26,18 +26,9 @@ export class MockEmailProvider implements EmailProvider {
 
 export class NotificationService {
   private static emailProvider: EmailProvider = new MockEmailProvider();
-  private static mockAlerts: ObligationAlert[] = [];
 
   static setEmailProvider(provider: EmailProvider): void {
     this.emailProvider = provider;
-  }
-
-  static registerMockAlert(alert: ObligationAlert): void {
-    this.mockAlerts.push(alert);
-  }
-
-  static clearMockAlerts(): void {
-    this.mockAlerts = [];
   }
 
   /**
@@ -47,20 +38,12 @@ export class NotificationService {
     organizationId: string,
     limit = 50,
   ): Promise<ObligationAlert[]> {
-    if (this.mockAlerts.length > 0) {
-      return this.mockAlerts.filter((a) => a.organizationId === organizationId).slice(0, limit);
-    }
-
-    try {
-      return await db
-        .select()
-        .from(schema.obligationAlerts)
-        .where(eq(schema.obligationAlerts.organizationId, organizationId))
-        .orderBy(desc(schema.obligationAlerts.createdAt))
-        .limit(limit);
-    } catch {
-      return this.mockAlerts.filter((a) => a.organizationId === organizationId);
-    }
+    return db
+      .select()
+      .from(schema.obligationAlerts)
+      .where(eq(schema.obligationAlerts.organizationId, organizationId))
+      .orderBy(desc(schema.obligationAlerts.createdAt))
+      .limit(limit);
   }
 
   /**
@@ -71,34 +54,21 @@ export class NotificationService {
     alertId: string,
     userId: string,
   ): Promise<boolean> {
-    const mock = this.mockAlerts.find(
-      (a) => a.id === alertId && a.organizationId === organizationId,
-    );
-    if (mock) {
-      mock.acknowledgedAt = new Date();
-      mock.acknowledgedBy = userId;
-      return true;
-    }
+    const [updated] = await db
+      .update(schema.obligationAlerts)
+      .set({
+        acknowledgedAt: new Date(),
+        acknowledgedBy: userId,
+      })
+      .where(
+        and(
+          eq(schema.obligationAlerts.id, alertId),
+          eq(schema.obligationAlerts.organizationId, organizationId),
+        ),
+      )
+      .returning();
 
-    try {
-      const [updated] = await db
-        .update(schema.obligationAlerts)
-        .set({
-          acknowledgedAt: new Date(),
-          acknowledgedBy: userId,
-        })
-        .where(
-          and(
-            eq(schema.obligationAlerts.id, alertId),
-            eq(schema.obligationAlerts.organizationId, organizationId),
-          ),
-        )
-        .returning();
-
-      return !!updated;
-    } catch {
-      return false;
-    }
+    return Boolean(updated);
   }
 
   /**
@@ -120,14 +90,10 @@ export class NotificationService {
     });
 
     if (res.success) {
-      try {
-        await db
-          .update(schema.obligationAlerts)
-          .set({ emailDelivered: true })
-          .where(eq(schema.obligationAlerts.id, alert.id));
-      } catch {
-        alert.emailDelivered = true;
-      }
+      await db
+        .update(schema.obligationAlerts)
+        .set({ emailDelivered: true })
+        .where(eq(schema.obligationAlerts.id, alert.id));
     }
 
     return res.success;

@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useId, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { Clock3, LockKeyhole, Trash2, UserPlus } from 'lucide-react';
 import { UserRole } from '@renewalradar/shared';
+import { apiRequest } from '../../lib/api';
+import { useSession } from '../SessionProvider';
 import { Badge } from '../ui/Badge';
 import { Dialog } from '../ui/Dialog';
 
@@ -15,16 +17,17 @@ export interface TeamMember {
   joinedAt: string;
 }
 
-export interface TeamSettingsProps {
-  initialMembers?: TeamMember[];
-  userRole?: UserRole;
+interface MembersResponse {
+  items: TeamMember[];
+  total: number;
 }
 
-interface PendingInvitation {
+interface CreatedInvitation {
   id: string;
   email: string;
   role: 'admin' | 'member' | 'viewer';
-  createdAt: string;
+  token: string;
+  expiresAt: string;
 }
 
 type InviteFeedback =
@@ -71,39 +74,14 @@ const memberDateFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC',
 });
 
-export const TeamSettings: React.FC<TeamSettingsProps> = ({
-  initialMembers,
-  userRole = 'owner',
-}) => {
-  const [members, setMembers] = useState<TeamMember[]>(
-    initialMembers ?? [
-      {
-        id: 'mem-1',
-        userId: 'user-1',
-        email: 'sarah.jenkins@acmelogistics.com',
-        fullName: 'Sarah Jenkins',
-        role: 'owner',
-        joinedAt: '2026-08-15T09:00:00Z',
-      },
-      {
-        id: 'mem-2',
-        userId: 'user-2',
-        email: 'dave.finance@acmelogistics.com',
-        fullName: 'Dave Miller',
-        role: 'admin',
-        joinedAt: '2026-08-20T11:30:00Z',
-      },
-      {
-        id: 'mem-3',
-        userId: 'user-3',
-        email: 'alex.ops@acmelogistics.com',
-        fullName: 'Alex Chen',
-        role: 'member',
-        joinedAt: '2026-09-01T14:15:00Z',
-      },
-    ],
-  );
-  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
+export const TeamSettings: React.FC = () => {
+  const { session } = useSession();
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState<CreatedInvitation[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [reloadMembers, setReloadMembers] = useState(0);
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'admin' | 'member' | 'viewer'>('viewer');
@@ -113,52 +91,87 @@ export const TeamSettings: React.FC<TeamSettingsProps> = ({
   const emailId = useId();
   const roleId = useId();
 
+  const userRole = session?.role;
   const canManageTeam = userRole === 'owner' || userRole === 'admin';
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setIsLoadingMembers(true);
+    setMembersError(null);
+
+    apiRequest<MembersResponse>('/organizations/members', { signal: controller.signal })
+      .then((response) => {
+        setMembers(response.items);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setMembersError(
+          error instanceof Error ? error.message : 'Team members could not be loaded.',
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingMembers(false);
+      });
+
+    return () => controller.abort();
+  }, [reloadMembers]);
 
   const handleSendInvite = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!inviteEmail.trim()) return;
+    if (!inviteEmail.trim() || !canManageTeam) return;
 
     setIsSubmitting(true);
     setInviteFeedback(null);
     setLastInviteLink(null);
 
     try {
-      const normalizedEmail = inviteEmail.trim().toLowerCase();
-      const generatedToken = `inv_${Math.random().toString(36).substring(2, 10)}${Date.now()}`;
-      const inviteLink = `${window.location.origin}/invite/accept?token=${generatedToken}`;
-      const invitation: PendingInvitation = {
-        id: `invite-${Date.now()}`,
-        email: normalizedEmail,
-        role: inviteRole,
-        createdAt: new Date().toISOString(),
-      };
+      const invitation = await apiRequest<CreatedInvitation>('/organizations/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteEmail.trim().toLowerCase(),
+          role: inviteRole,
+        }),
+      });
+      const inviteLink = `${window.location.origin}/invite/accept?token=${encodeURIComponent(invitation.token)}`;
 
-      setPendingInvitations((previous) => [...previous, invitation]);
+      setPendingInvitations((previous) => [
+        ...previous.filter((item) => item.id !== invitation.id),
+        invitation,
+      ]);
       setLastInviteLink(inviteLink);
       setInviteFeedback({
         tone: 'success',
-        message: `Demo invitation created for ${normalizedEmail}. It remains pending until accepted.`,
+        message: `Invitation created for ${invitation.email}. Share the link below securely.`,
       });
       setInviteEmail('');
-    } catch {
+    } catch (error: unknown) {
       setInviteFeedback({
         tone: 'error',
-        message: 'The demo invitation could not be generated. Please try again.',
+        message: error instanceof Error ? error.message : 'The invitation could not be created.',
       });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleRemoveMember = (memberId: string, memberRole: UserRole) => {
-    if (memberRole === 'owner') {
-      alert('Cannot remove the organization owner');
-      return;
-    }
+  const handleRemoveMember = async (member: TeamMember) => {
+    if (member.role === 'owner' || !canManageTeam) return;
+    if (!window.confirm(`Remove ${member.fullName} from this organization?`)) return;
 
-    if (confirm('Are you sure you want to remove this member?')) {
-      setMembers((previous) => previous.filter((member) => member.id !== memberId));
+    setRemovingUserId(member.userId);
+    setMembersError(null);
+    try {
+      await apiRequest<void>(`/organizations/members/${encodeURIComponent(member.userId)}`, {
+        method: 'DELETE',
+      });
+      setMembers((previous) => previous.filter((item) => item.userId !== member.userId));
+    } catch (error: unknown) {
+      setMembersError(
+        error instanceof Error ? error.message : 'The team member could not be removed.',
+      );
+    } finally {
+      setRemovingUserId(null);
     }
   };
 
@@ -178,7 +191,11 @@ export const TeamSettings: React.FC<TeamSettingsProps> = ({
             <button
               type="button"
               className="btn btn-primary self-start sm:self-auto"
-              onClick={() => setIsInviteOpen(true)}
+              onClick={() => {
+                setInviteFeedback(null);
+                setLastInviteLink(null);
+                setIsInviteOpen(true);
+              }}
             >
               <UserPlus aria-hidden="true" className="h-4 w-4" />
               Invite member
@@ -186,7 +203,7 @@ export const TeamSettings: React.FC<TeamSettingsProps> = ({
           )}
         </div>
 
-        {!canManageTeam && (
+        {userRole && !canManageTeam && (
           <div className="mx-4 mt-4 flex gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 sm:mx-6">
             <LockKeyhole aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
             <p className="text-sm text-slate-700">
@@ -196,65 +213,90 @@ export const TeamSettings: React.FC<TeamSettingsProps> = ({
           </div>
         )}
 
+        {membersError && (
+          <div className="feedback-error m-4 sm:m-6" role="alert">
+            <p>{membersError}</p>
+            <button
+              type="button"
+              className="btn btn-secondary mt-3"
+              onClick={() => setReloadMembers((value) => value + 1)}
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
         <div className="hidden grid-cols-[minmax(0,1.7fr)_8rem_8rem_6rem] gap-4 border-b border-slate-200 bg-slate-50 px-6 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 md:grid">
           <span>Member</span>
           <span>Role</span>
           <span>Joined</span>
           <span className="text-right">Access</span>
         </div>
-        <div className="divide-y divide-slate-200">
-          {members.map((member) => (
-            <div
-              key={member.id}
-              className="grid gap-4 px-4 py-4 md:grid-cols-[minmax(0,1.7fr)_8rem_8rem_6rem] md:items-center md:px-6"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">{member.fullName}</p>
-                <p className="mt-0.5 break-all text-sm text-slate-500">{member.email}</p>
+        {isLoadingMembers ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-500 sm:px-6" role="status">
+            Loading team members…
+          </p>
+        ) : members.length === 0 && !membersError ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-500 sm:px-6">
+            No organization members were returned.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-200">
+            {members.map((member) => (
+              <div
+                key={member.id}
+                className="grid gap-4 px-4 py-4 md:grid-cols-[minmax(0,1.7fr)_8rem_8rem_6rem] md:items-center md:px-6"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{member.fullName}</p>
+                  <p className="mt-0.5 break-all text-sm text-slate-500">{member.email}</p>
+                </div>
+                <div className="flex items-center justify-between gap-3 md:block">
+                  <span className="text-xs font-medium text-slate-500 md:hidden">Role</span>
+                  <Badge tone={roleTone[member.role]}>{member.role}</Badge>
+                </div>
+                <div className="flex items-center justify-between gap-3 text-sm text-slate-600 md:block">
+                  <span className="text-xs font-medium text-slate-500 md:hidden">Joined</span>
+                  <time dateTime={member.joinedAt}>
+                    {memberDateFormatter.format(new Date(member.joinedAt))}
+                  </time>
+                </div>
+                <div className="flex justify-end">
+                  {member.role === 'owner' ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500">
+                      <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5" />
+                      Protected
+                    </span>
+                  ) : canManageTeam ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleRemoveMember(member)}
+                      disabled={removingUserId === member.userId}
+                      className="btn btn-ghost text-red-700 hover:bg-red-50"
+                      aria-label={`Remove ${member.fullName}`}
+                    >
+                      <Trash2 aria-hidden="true" className="h-4 w-4" />
+                      {removingUserId === member.userId ? 'Removing…' : 'Remove'}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-500">Read only</span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center justify-between gap-3 md:block">
-                <span className="text-xs font-medium text-slate-500 md:hidden">Role</span>
-                <Badge tone={roleTone[member.role]}>{member.role}</Badge>
-              </div>
-              <div className="flex items-center justify-between gap-3 text-sm text-slate-600 md:block">
-                <span className="text-xs font-medium text-slate-500 md:hidden">Joined</span>
-                <time dateTime={member.joinedAt}>
-                  {memberDateFormatter.format(new Date(member.joinedAt))}
-                </time>
-              </div>
-              <div className="flex justify-end">
-                {member.role === 'owner' ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500">
-                    <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5" />
-                    Protected
-                  </span>
-                ) : canManageTeam ? (
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveMember(member.id, member.role)}
-                    className="btn btn-ghost text-red-700 hover:bg-red-50"
-                    aria-label={`Remove ${member.fullName}`}
-                  >
-                    <Trash2 aria-hidden="true" className="h-4 w-4" />
-                    Remove
-                  </button>
-                ) : (
-                  <span className="text-xs text-slate-500">Read only</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {pendingInvitations.length > 0 && (
         <section className="surface overflow-hidden" aria-labelledby="pending-heading">
           <div className="border-b border-slate-200 px-4 py-4 sm:px-6">
             <h2 id="pending-heading" className="section-heading">
-              Pending invitations
+              Invitations created this visit
             </h2>
             <p className="muted mt-1 text-sm">
-              Locally generated demo invitations are not active members.
+              The API does not provide invitation history. Only invitations created in this view
+              appear here.
             </p>
           </div>
           <div className="divide-y divide-slate-200">
@@ -269,7 +311,7 @@ export const TeamSettings: React.FC<TeamSettingsProps> = ({
                   </p>
                   <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
                     <Clock3 aria-hidden="true" className="h-3.5 w-3.5" />
-                    Created {memberDateFormatter.format(new Date(invitation.createdAt))}
+                    Expires {memberDateFormatter.format(new Date(invitation.expiresAt))}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -311,7 +353,7 @@ export const TeamSettings: React.FC<TeamSettingsProps> = ({
         open={isInviteOpen && canManageTeam}
         onClose={() => setIsInviteOpen(false)}
         title="Invite a team member"
-        description="Generate a demo invitation link and choose the access they would receive after acceptance."
+        description="Create a secure invitation link and choose the access granted after acceptance."
       >
         <form onSubmit={handleSendInvite} className="space-y-5">
           <div>
@@ -346,8 +388,8 @@ export const TeamSettings: React.FC<TeamSettingsProps> = ({
               <option value="admin">Admin — invite and manage</option>
             </select>
             <p className="muted mt-2 text-xs">
-              This local demo generates a link only. It does not send email or add an accepted
-              member.
+              The invitation expires after seven days. Share the returned link directly with this
+              person.
             </p>
           </div>
 
@@ -359,7 +401,7 @@ export const TeamSettings: React.FC<TeamSettingsProps> = ({
               <p>{inviteFeedback.message}</p>
               {lastInviteLink && (
                 <p className="mt-2 break-all font-mono text-xs select-all">
-                  Demo link: {lastInviteLink}
+                  Invitation link: {lastInviteLink}
                 </p>
               )}
             </div>
@@ -374,7 +416,7 @@ export const TeamSettings: React.FC<TeamSettingsProps> = ({
               Close
             </button>
             <button type="submit" disabled={isSubmitting} className="btn btn-primary">
-              {isSubmitting ? 'Generating…' : 'Generate invitation'}
+              {isSubmitting ? 'Creating…' : 'Create invitation'}
             </button>
           </div>
         </form>

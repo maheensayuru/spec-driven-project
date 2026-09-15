@@ -1,151 +1,115 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, FlaskConical, RefreshCw, X } from 'lucide-react';
 import { DashboardMetricsResponse, ObligationResponse } from '@renewalradar/shared';
 import { MetricsCards } from '../../../components/dashboard/MetricsCards';
 import { UrgentActionsList } from '../../../components/dashboard/UrgentActionsList';
 import { DeadlineTimeline } from '../../../components/dashboard/DeadlineTimeline';
+import { useSession } from '../../../components/SessionProvider';
+import { apiRequest } from '../../../lib/api';
+import { runNotificationScan } from '../../../lib/scanner';
+
+interface ObligationListResponse {
+  items: ObligationResponse[];
+}
+
+const fetchAllObligations = async (): Promise<ObligationResponse[]> => {
+  const obligations: ObligationResponse[] = [];
+  const limit = 100;
+
+  for (let page = 1; ; page += 1) {
+    const response = await apiRequest<ObligationListResponse>(
+      `/obligations?page=${page}&limit=${limit}`,
+    );
+    obligations.push(...response.items);
+    if (response.items.length < limit) return obligations;
+  }
+};
 
 export default function DashboardPage() {
+  const { session } = useSession();
+  const organizationId = session?.organizationId;
+  const activeOrganizationId = useRef(organizationId);
+  activeOrganizationId.current = organizationId;
   const [metrics, setMetrics] = useState<DashboardMetricsResponse | null>(null);
   const [timelineObligations, setTimelineObligations] = useState<ObligationResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [scanNotice, setScanNotice] = useState<string | null>(null);
+  const [scanNotice, setScanNotice] = useState<{
+    tone: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const dashboardRequestId = useRef(0);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
+    if (!organizationId || activeOrganizationId.current !== organizationId) return;
+
+    const requestId = ++dashboardRequestId.current;
     setIsLoading(true);
     setError(null);
+
     try {
-      const sampleMetrics: DashboardMetricsResponse = {
-        totalActiveObligations: 3,
-        totalAnnualCommittedSpend: 90820,
-        reportingCurrency: 'USD',
-        imminentNoticeDeadlinesCount: 2,
-        imminentRenewalsCount: 1,
-        pendingVerificationDocumentsCount: 0,
-        urgentActions: [
-          {
-            id: 'act-fleet-insurance',
-            obligationId: 'obl-3',
-            title: 'Fleet Commercial Auto & Liability Insurance',
-            vendor: 'Travelers Commercial',
-            actionType: 'notice_deadline_approaching',
-            dueDate: '2026-09-16',
-            daysRemaining: 5,
-            riskLevel: 'critical',
-            amount: 18500,
-            currency: 'USD',
-          },
-          {
-            id: 'act-google-workspace',
-            obligationId: 'obl-1',
-            title: 'Google Workspace Enterprise',
-            vendor: 'Google LLC',
-            actionType: 'notice_deadline_approaching',
-            dueDate: '2026-10-16',
-            daysRemaining: 35,
-            riskLevel: 'medium',
-            amount: 4320,
-            currency: 'USD',
-          },
-        ],
-        upcomingRenewalsTimeline: [],
-        spendByCurrencyBreakdown: { USD: 90820 },
-        spendByTypeBreakdown: {
-          subscription: 4320,
-          lease: 68000,
-          insurance: 18500,
-        },
-      };
-
-      const sampleTimeline: ObligationResponse[] = [
-        {
-          id: 'obl-3',
-          organizationId: 'org-1',
-          vendorId: null,
-          title: 'Fleet Commercial Auto & Liability Insurance',
-          type: 'insurance',
-          status: 'active',
-          amount: 18500,
-          currency: 'USD',
-          billingFrequency: 'annual',
-          renewalDate: '2026-10-31',
-          noticePeriodDays: 45,
-          cancellationDeadline: '2026-09-16',
-          autoRenew: true,
-          riskLevel: 'critical',
-          tags: ['compliance', 'vehicles'],
-          version: 1,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: 'obl-1',
-          organizationId: 'org-1',
-          vendorId: null,
-          title: 'Google Workspace Enterprise',
-          type: 'subscription',
-          status: 'active',
-          amount: 4320,
-          currency: 'USD',
-          billingFrequency: 'annual',
-          renewalDate: '2026-11-15',
-          noticePeriodDays: 30,
-          cancellationDeadline: '2026-10-16',
-          autoRenew: true,
-          riskLevel: 'medium',
-          tags: ['saas', 'productivity'],
-          version: 1,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: 'obl-2',
-          organizationId: 'org-1',
-          vendorId: null,
-          title: 'Warehouse Commercial Lease (Building 4B)',
-          type: 'lease',
-          status: 'active',
-          amount: 68000,
-          currency: 'USD',
-          billingFrequency: 'annual',
-          renewalDate: '2027-04-30',
-          noticePeriodDays: 90,
-          cancellationDeadline: '2027-01-30',
-          autoRenew: true,
-          riskLevel: 'high',
-          tags: ['facility', 'lease'],
-          version: 1,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ];
-
-      setMetrics(sampleMetrics);
-      setTimelineObligations(sampleTimeline);
+      const [response, obligations] = await Promise.all([
+        apiRequest<DashboardMetricsResponse>('/dashboard'),
+        fetchAllObligations(),
+      ]);
+      if (requestId === dashboardRequestId.current) {
+        setMetrics(response);
+        setTimelineObligations(obligations);
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch executive dashboard');
+      if (requestId === dashboardRequestId.current) {
+        setMetrics(null);
+        setTimelineObligations([]);
+        setError(err instanceof Error ? err.message : 'Failed to fetch executive dashboard');
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === dashboardRequestId.current) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [organizationId]);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    setMetrics(null);
+    setTimelineObligations([]);
+    setScanNotice(null);
+    void fetchDashboardData();
 
-  const handleManualScan = () => {
+    return () => {
+      dashboardRequestId.current += 1;
+    };
+  }, [fetchDashboardData]);
+
+  const handleManualScan = async () => {
     setIsScanning(true);
     setScanNotice(null);
-    setTimeout(() => {
-      setScanNotice(
-        'Demo result: 3 obligations evaluated, including 1 critical example. No alerts were created.',
-      );
+    const scanOrganizationId = organizationId;
+
+    try {
+      const result = await runNotificationScan();
+      if (activeOrganizationId.current !== scanOrganizationId) return;
+      setScanNotice({
+        tone: 'success',
+        message: `Scan complete: ${result.scanned} ${
+          result.scanned === 1 ? 'obligation' : 'obligations'
+        } scanned, ${result.alertsCreated} ${
+          result.alertsCreated === 1 ? 'alert' : 'alerts'
+        } created.`,
+      });
+      await fetchDashboardData();
+    } catch (err: unknown) {
+      if (activeOrganizationId.current === scanOrganizationId) {
+        setScanNotice({
+          tone: 'error',
+          message: err instanceof Error ? err.message : 'The deadline scanner could not complete.',
+        });
+      }
+    } finally {
       setIsScanning(false);
-    }, 400);
+    }
   };
 
   return (
@@ -209,8 +173,7 @@ export default function DashboardPage() {
                 </h2>
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                Development-only controls for previewing the deadline scan experience. This does not
-                create or persist alerts.
+                Run the persisted deadline scanner and refresh dashboard and notification data.
               </p>
             </div>
             <button
@@ -223,16 +186,18 @@ export default function DashboardPage() {
                 aria-hidden="true"
                 className={`h-4 w-4 ${isScanning ? 'animate-spin' : ''}`}
               />
-              {isScanning ? 'Running simulation…' : 'Trigger Scanner Demo'}
+              {isScanning ? 'Running scanner…' : 'Trigger Scanner Demo'}
             </button>
           </div>
 
           {scanNotice && (
             <div
-              className="feedback-success mt-4 flex items-start justify-between gap-3"
-              role="status"
+              className={`mt-4 flex items-start justify-between gap-3 ${
+                scanNotice.tone === 'success' ? 'feedback-success' : 'feedback-error'
+              }`}
+              role={scanNotice.tone === 'error' ? 'alert' : 'status'}
             >
-              <span>{scanNotice}</span>
+              <span>{scanNotice.message}</span>
               <button
                 type="button"
                 onClick={() => setScanNotice(null)}

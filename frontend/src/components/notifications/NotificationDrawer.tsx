@@ -1,15 +1,19 @@
 'use client';
 
-import React, { useId, useState } from 'react';
-import { Bell, Check, ExternalLink, FlaskConical } from 'lucide-react';
-import { RiskLevel } from '@renewalradar/shared';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Bell, Check, ExternalLink, RefreshCw } from 'lucide-react';
+import { ObligationResponse, RiskLevel } from '@renewalradar/shared';
 import { Badge } from '../ui/Badge';
 import { Dialog } from '../ui/Dialog';
+import { useSession } from '../SessionProvider';
+import { ApiError, apiRequest } from '../../lib/api';
+import { runNotificationScan } from '../../lib/scanner';
 
 export interface AlertItem {
   id: string;
   obligationId: string;
   obligationTitle: string;
+  obligationAvailable: boolean;
   milestone: string;
   triggerDate: string;
   priority: RiskLevel;
@@ -17,9 +21,20 @@ export interface AlertItem {
   createdAt: string;
 }
 
-export interface NotificationDrawerProps {
-  initialAlerts?: AlertItem[];
-  onTriggerScan?: () => Promise<void>;
+interface NotificationRecord {
+  id: string;
+  obligationId: string;
+  milestone: string;
+  triggerDate: string;
+  priority: RiskLevel;
+  acknowledgedAt?: string | null;
+  createdAt: string;
+}
+
+interface NotificationListResponse {
+  items: NotificationRecord[];
+  unreadCount: number;
+  total: number;
 }
 
 const severityOrder: Record<RiskLevel, number> = {
@@ -46,72 +61,144 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
   timeZoneName: 'short',
 });
 
-export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
-  initialAlerts,
-  onTriggerScan,
-}) => {
+export const NotificationDrawer: React.FC = () => {
+  const { session } = useSession();
+  const organizationId = session?.organizationId;
   const [isOpen, setIsOpen] = useState(false);
-  const [alerts, setAlerts] = useState<AlertItem[]>(
-    initialAlerts ?? [
-      {
-        id: 'alt-1',
-        obligationId: 'obl-3',
-        obligationTitle: 'Commercial Fleet Insurance',
-        milestone: '7_day',
-        triggerDate: '2026-09-18',
-        priority: 'critical',
-        acknowledgedAt: null,
-        createdAt: '2026-09-05T07:00:00Z',
-      },
-      {
-        id: 'alt-2',
-        obligationId: 'obl-1',
-        obligationTitle: 'Google Workspace Enterprise',
-        milestone: '30_day',
-        triggerDate: '2026-09-16',
-        priority: 'high',
-        acknowledgedAt: null,
-        createdAt: '2026-09-05T07:00:00Z',
-      },
-    ],
-  );
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanFeedback, setScanFeedback] = useState<{
-    tone: 'success' | 'error';
-    message: string;
-  } | null>(null);
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [loadedOrganizationId, setLoadedOrganizationId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
+  const alertsRequestId = useRef(0);
   const unreadStatusId = useId();
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanFeedback, setScanFeedback] = useState<{ error: boolean; message: string } | null>(
+    null,
+  );
 
-  const unreadCount = alerts.filter((alert) => !alert.acknowledgedAt).length;
-  const sortedAlerts = [...alerts].sort((left, right) => {
+  const fetchAlerts = useCallback(async () => {
+    if (!organizationId) return;
+
+    const requestId = ++alertsRequestId.current;
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await apiRequest<NotificationListResponse>('/notifications');
+      const obligationIds = [...new Set(response.items.map((alert) => alert.obligationId))];
+      const titleEntries = await Promise.all(
+        obligationIds.map(async (obligationId) => {
+          try {
+            const obligation = await apiRequest<ObligationResponse>(
+              `/obligations/${encodeURIComponent(obligationId)}`,
+            );
+            return [obligationId, { title: obligation.title, available: true }] as const;
+          } catch (err: unknown) {
+            if (err instanceof ApiError && err.status === 404) {
+              return [obligationId, { title: 'Obligation unavailable', available: false }] as const;
+            }
+            throw err;
+          }
+        }),
+      );
+      const obligationTitles = new Map<string, { title: string; available: boolean }>(titleEntries);
+
+      if (requestId === alertsRequestId.current) {
+        setAlerts(
+          response.items.map((alert) => {
+            const obligation = obligationTitles.get(alert.obligationId);
+            return {
+              ...alert,
+              obligationTitle: obligation?.title ?? 'Obligation unavailable',
+              obligationAvailable: obligation?.available ?? false,
+            };
+          }),
+        );
+        setLoadedOrganizationId(organizationId);
+      }
+    } catch (err: unknown) {
+      if (requestId === alertsRequestId.current) {
+        setAlerts([]);
+        setLoadedOrganizationId(organizationId);
+        setError(err instanceof Error ? err.message : 'Notifications could not be loaded.');
+      }
+    } finally {
+      if (requestId === alertsRequestId.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [organizationId]);
+
+  useEffect(() => {
+    alertsRequestId.current += 1;
+    setAlerts([]);
+    setLoadedOrganizationId(null);
+    setError(null);
+    setScanFeedback(null);
+
+    if (organizationId) {
+      void fetchAlerts();
+    }
+
+    return () => {
+      alertsRequestId.current += 1;
+    };
+  }, [fetchAlerts, organizationId]);
+
+  useEffect(() => {
+    const handleNotificationsChanged = () => {
+      void fetchAlerts();
+    };
+    window.addEventListener('renewalradar:notifications-changed', handleNotificationsChanged);
+    return () => {
+      window.removeEventListener('renewalradar:notifications-changed', handleNotificationsChanged);
+    };
+  }, [fetchAlerts]);
+
+  const visibleAlerts = loadedOrganizationId === organizationId ? alerts : [];
+  const unreadCount = visibleAlerts.filter((alert) => !alert.acknowledgedAt).length;
+  const sortedAlerts = [...visibleAlerts].sort((left, right) => {
     const severityDifference = severityOrder[left.priority] - severityOrder[right.priority];
     if (severityDifference !== 0) return severityDifference;
     return Number(Boolean(left.acknowledgedAt)) - Number(Boolean(right.acknowledgedAt));
   });
 
-  const handleAcknowledge = (alertId: string) => {
-    setAlerts((previous) =>
-      previous.map((alert) =>
-        alert.id === alertId ? { ...alert, acknowledgedAt: new Date().toISOString() } : alert,
-      ),
-    );
+  const handleOpen = () => {
+    setIsOpen(true);
+    void fetchAlerts();
   };
 
-  const handleManualScan = async () => {
+  const handleAcknowledge = async (alertId: string) => {
+    setAcknowledgingId(alertId);
+    setError(null);
+    try {
+      await apiRequest<{ success: true }>(
+        `/notifications/${encodeURIComponent(alertId)}/acknowledge`,
+        { method: 'POST' },
+      );
+      await fetchAlerts();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'The alert could not be acknowledged.');
+    } finally {
+      setAcknowledgingId(null);
+    }
+  };
+
+  const handleScan = async () => {
     setIsScanning(true);
     setScanFeedback(null);
     try {
-      if (onTriggerScan) {
-        await onTriggerScan();
-      }
+      const result = await runNotificationScan();
       setScanFeedback({
-        tone: 'success',
-        message: 'Demo scan completed. This preview does not persist scanner results.',
+        error: false,
+        message: `Scan complete: ${result.scanned} obligations scanned, ${result.alertsCreated} alerts created.`,
       });
-    } catch {
+    } catch (failure: unknown) {
       setScanFeedback({
-        tone: 'error',
-        message: 'The demo scanner could not complete. Please try again.',
+        error: true,
+        message:
+          failure instanceof Error ? failure.message : 'The deadline scanner could not complete.',
       });
     } finally {
       setIsScanning(false);
@@ -122,7 +209,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
     <>
       <button
         type="button"
-        onClick={() => setIsOpen(true)}
+        onClick={handleOpen}
         className="relative inline-flex h-11 w-11 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#173e48] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#173e48] focus-visible:ring-offset-2"
         aria-label="Notifications"
         aria-describedby={unreadStatusId}
@@ -159,8 +246,35 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
             </p>
           </div>
 
+          {error && (
+            <div
+              className="feedback-error m-4 flex items-center justify-between gap-3"
+              role="alert"
+            >
+              <span>{error}</span>
+              <button
+                type="button"
+                onClick={() => void fetchAlerts()}
+                className="btn btn-secondary"
+              >
+                <RefreshCw aria-hidden="true" className="h-4 w-4" />
+                Retry
+              </button>
+            </div>
+          )}
+
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {sortedAlerts.length === 0 ? (
+            {isLoading && sortedAlerts.length === 0 ? (
+              <div
+                className="space-y-3 p-4 sm:p-5"
+                aria-label="Loading notifications"
+                aria-busy="true"
+              >
+                {[1, 2, 3].map((item) => (
+                  <div key={item} className="h-28 animate-pulse rounded-md bg-slate-100" />
+                ))}
+              </div>
+            ) : error && sortedAlerts.length === 0 ? null : sortedAlerts.length === 0 ? (
               <div className="empty-state mx-4 my-6 sm:mx-5">
                 <Bell aria-hidden="true" className="mx-auto h-6 w-6 text-slate-400" />
                 <p className="mt-3 font-semibold text-slate-900">No deadline alerts</p>
@@ -194,14 +308,23 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                         </span>
                       </div>
 
-                      <a
-                        href={`/obligations?inspect=${encodeURIComponent(item.obligationId)}`}
-                        className="mt-3 inline-flex items-start gap-1.5 text-sm font-semibold text-slate-900 hover:text-[#173e48] hover:underline"
-                        onClick={() => setIsOpen(false)}
-                      >
-                        <span>{item.obligationTitle}</span>
-                        <ExternalLink aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      </a>
+                      {item.obligationAvailable ? (
+                        <a
+                          href={`/obligations?inspect=${encodeURIComponent(item.obligationId)}`}
+                          className="mt-3 inline-flex items-start gap-1.5 text-sm font-semibold text-slate-900 hover:text-[#173e48] hover:underline"
+                          onClick={() => setIsOpen(false)}
+                        >
+                          <span>{item.obligationTitle}</span>
+                          <ExternalLink
+                            aria-hidden="true"
+                            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                          />
+                        </a>
+                      ) : (
+                        <p className="mt-3 text-sm font-semibold text-slate-500">
+                          {item.obligationTitle}
+                        </p>
+                      )}
 
                       <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px]">
                         <dt className="font-medium text-slate-500">Milestone</dt>
@@ -233,11 +356,12 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                       {isUnread && (
                         <button
                           type="button"
-                          onClick={() => handleAcknowledge(item.id)}
+                          onClick={() => void handleAcknowledge(item.id)}
+                          disabled={acknowledgingId === item.id}
                           className="btn btn-secondary mt-4 w-full sm:w-auto"
                         >
                           <Check aria-hidden="true" className="h-4 w-4" />
-                          Mark as read
+                          {acknowledgingId === item.id ? 'Marking as read…' : 'Mark as read'}
                         </button>
                       )}
                     </li>
@@ -246,37 +370,31 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
               </ol>
             )}
           </div>
-
-          {process.env.NODE_ENV === 'development' && (
-            <footer className="border-t border-slate-200 bg-slate-50 px-4 py-4 sm:px-5">
-              <div className="mb-3">
-                <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  <FlaskConical aria-hidden="true" className="h-4 w-4" />
-                  Demo tools
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Runs the configured demo callback. Results shown here are not persisted.
-                </p>
-              </div>
+          {process.env.NODE_ENV !== 'production' && (
+            <section className="border-t border-slate-200 bg-slate-50 p-5" aria-label="Demo tools">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Demo Tools
+              </h3>
+              <p className="mt-2 text-xs leading-5 text-slate-600">
+                Development-only scanner. Evaluates real obligations and saves alerts.
+              </p>
               <button
                 type="button"
-                onClick={handleManualScan}
+                onClick={handleScan}
                 disabled={isScanning}
-                className="btn btn-secondary w-full"
+                className="btn btn-secondary mt-3 w-full"
               >
-                {isScanning ? 'Running demo…' : 'Trigger Scanner Demo'}
+                {isScanning ? 'Scanning deadlines…' : 'Trigger Scanner Demo'}
               </button>
               {scanFeedback && (
                 <div
-                  className={`mt-3 ${
-                    scanFeedback.tone === 'success' ? 'feedback-success' : 'feedback-error'
-                  }`}
-                  role={scanFeedback.tone === 'error' ? 'alert' : 'status'}
+                  className={`${scanFeedback.error ? 'feedback-error' : 'feedback-success'} mt-3`}
+                  role={scanFeedback.error ? 'alert' : 'status'}
                 >
                   {scanFeedback.message}
                 </div>
               )}
-            </footer>
+            </section>
           )}
         </div>
       </Dialog>

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Radar, ArrowRight, CalendarClock, ShieldCheck } from 'lucide-react';
+import { apiRequest } from '../../../lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,33 +23,15 @@ export default function LoginPage() {
     setErrorMessage(null);
 
     try {
-      // In full production, sends POST /api/v1/auth/login
-      const res = await fetch('http://localhost:4000/api/v1/auth/login', {
+      await apiRequest('/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-
-      if (res.ok) {
-        router.push('/dashboard');
-        return;
-      }
-
-      // Fallback for local demo if backend is running on alternate origin
-      if (email === 'ops@acmelogistics.com' && password === 'Password123!') {
-        router.push('/dashboard');
-        return;
-      }
-
-      const body = await res.json().catch(() => ({}));
-      setErrorMessage(body.message || 'Invalid email or password');
-    } catch {
-      // Graceful fallback for offline presentation demo
-      if (email === 'ops@acmelogistics.com' && password === 'Password123!') {
-        router.push('/dashboard');
-      } else {
-        setErrorMessage('Unable to connect to auth service. Use demo credentials.');
-      }
+      router.replace('/dashboard');
+    } catch (error: unknown) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Unable to connect to the sign-in service.',
+      );
     } finally {
       setIsLoading(false);
     }
