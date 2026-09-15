@@ -25,9 +25,24 @@ export const defaultQueueOptions: QueueOptions = {
     },
   },
 };
+export const documentIngestionJobOptions = {
+  attempts: 3,
+  backoff: {
+    type: 'exponential',
+    delay: 2000,
+  },
+  removeOnComplete: {
+    count: 1000,
+    age: 7 * 24 * 3600, // 7 days retention
+  },
+  removeOnFail: false, // Retained failed jobs for dead-letter visibility
+};
 
 export const DEADLINE_SCANNER_QUEUE_NAME = 'deadline-scanner';
 export const DOCUMENT_INGESTION_QUEUE_NAME = 'document-ingestion';
 
 export const deadlineScannerQueue = new Queue(DEADLINE_SCANNER_QUEUE_NAME, defaultQueueOptions);
-export const documentIngestionQueue = new Queue(DOCUMENT_INGESTION_QUEUE_NAME, defaultQueueOptions);
+export const documentIngestionQueue = new Queue(DOCUMENT_INGESTION_QUEUE_NAME, {
+  ...defaultQueueOptions,
+  defaultJobOptions: documentIngestionJobOptions,
+});

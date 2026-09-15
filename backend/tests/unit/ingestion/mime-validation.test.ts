@@ -105,7 +105,9 @@ describe('T045: Binary Magic-Bytes MIME Validation & File Sanitization (FR-014 &
     });
 
     it('rejects file declared as PDF when content is HTML script', () => {
-      const htmlBuffer = Buffer.from('<!DOCTYPE html><html><body><script>alert(1)</script></body></html>');
+      const htmlBuffer = Buffer.from(
+        '<!DOCTYPE html><html><body><script>alert(1)</script></body></html>',
+      );
       const result = validateDocumentContent(htmlBuffer, 'application/pdf');
 
       expect(result.valid).toBe(false);

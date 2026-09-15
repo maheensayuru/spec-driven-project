@@ -27,7 +27,9 @@ const EnvSchema = z.object({
     .string()
     .default('postgresql://renewalradar:local_dev_password@localhost:5433/renewalradar_dev'),
   DATABASE_MODE: z.enum(['auto', 'postgres', 'pglite']).default('auto'),
-  PGLITE_DATA_DIR: z.string().default(fileURLToPath(new URL('../../.data/postgres', import.meta.url))),
+  PGLITE_DATA_DIR: z
+    .string()
+    .default(fileURLToPath(new URL('../../.data/postgres', import.meta.url))),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   S3_ENDPOINT: z.string().default('http://localhost:9000'),
   S3_REGION: z.string().default('us-east-1'),
@@ -40,9 +42,11 @@ const EnvSchema = z.object({
     .default('true'),
   AI_PROVIDER: z.enum(['mock', 'anthropic', 'openai']).default('mock'),
   ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default('claude-3-5-sonnet-20241022'),
   OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().default('gpt-4o'),
+  AI_EXTRACTION_TIMEOUT_MS: z.coerce.number().default(60000),
 });
-
 export type Env = z.infer<typeof EnvSchema>;
 
 export const env: Env = EnvSchema.parse(process.env);

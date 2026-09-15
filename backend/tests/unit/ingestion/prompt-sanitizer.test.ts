@@ -7,10 +7,7 @@ import {
   validateProviderExtractionPayload,
   ExtractedRawField,
 } from '../../../src/modules/ingestion/prompt.sanitizer.js';
-import {
-  ProvisionalExtractionResultSchema,
-  ExtractedFieldItemSchema,
-} from '@renewalradar/shared';
+import { ProvisionalExtractionResultSchema, ExtractedFieldItemSchema } from '@renewalradar/shared';
 
 describe('T046: Document Ingestion Security & AI Sandboxing (Constitution Principle III & Security Standards)', () => {
   describe('Adversarial prose containment inside unbreakable boundary', () => {
@@ -155,7 +152,9 @@ describe('T046: Document Ingestion Security & AI Sandboxing (Constitution Princi
 
       // System instructions must explicitly instruct the LLM on security boundaries
       expect(systemPrompt).toContain('<document_content>');
-      expect(systemPrompt.toLowerCase()).toMatch(/passive|do not execute|ignore instructions inside/);
+      expect(systemPrompt.toLowerCase()).toMatch(
+        /passive|do not execute|ignore instructions inside/,
+      );
       expect(systemPrompt).toMatch(/json/i);
     });
 

@@ -52,6 +52,14 @@ export function buildServer(options?: BuildServerOptions): FastifyInstance {
       });
     }
 
+    if ('statusCode' in error && typeof error.statusCode === 'number') {
+      const code = error.statusCode;
+      return reply.status(code).send({
+        statusCode: code,
+        error: error.name || 'Error',
+        message: error.message,
+      });
+    }
     server.log.error(error);
     return reply.status(500).send({
       statusCode: 500,

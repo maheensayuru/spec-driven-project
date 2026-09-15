@@ -397,10 +397,7 @@ describe('T047: Document Extraction & Human Verification Workflow Integration (U
       .select()
       .from(schema.auditEvents)
       .where(
-        and(
-          eq(schema.auditEvents.organizationId, orgA),
-          eq(schema.auditEvents.action, 'rejected'),
-        ),
+        and(eq(schema.auditEvents.organizationId, orgA), eq(schema.auditEvents.action, 'rejected')),
       );
     expect(auditLogs.length).toBeGreaterThanOrEqual(1);
     expect(auditLogs[0]?.actorId).toBe(userAdminAId);

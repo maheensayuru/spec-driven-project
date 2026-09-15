@@ -3,7 +3,15 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Files, Users, Radar, ArrowUpRight, Building2 } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Files,
+  FileUp,
+  Users,
+  Radar,
+  ArrowUpRight,
+  Building2,
+} from 'lucide-react';
 import { NotificationDrawer } from './notifications/NotificationDrawer';
 import { useSession } from './SessionProvider';
 import { apiRequest } from '../lib/api';
@@ -11,6 +19,7 @@ import { apiRequest } from '../lib/api';
 const navigation = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/obligations', label: 'Obligations', icon: Files },
+  { href: '/documents', label: 'Documents', icon: FileUp },
   { href: '/settings/team', label: 'Team & Roles', icon: Users },
 ];
 
@@ -138,7 +147,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <nav
           aria-label="Mobile navigation"
-          className="grid grid-cols-3 gap-1 border-t border-slate-100 px-3 lg:hidden"
+          className="grid grid-cols-4 gap-1 border-t border-slate-100 px-3 lg:hidden"
         >
           {navigation.map(({ href, label }) => (
             <Link

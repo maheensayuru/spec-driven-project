@@ -26,12 +26,7 @@ export type DocumentProcessingStatus = z.infer<typeof DocumentProcessingStatusSc
 export const DocumentSecurityStatusSchema = z.enum(['scan_pending', 'clean', 'blocked']);
 export type DocumentSecurityStatus = z.infer<typeof DocumentSecurityStatusSchema>;
 
-export const ExtractionStatusSchema = z.enum([
-  'pending_review',
-  'confirmed',
-  'rejected',
-  'failed',
-]);
+export const ExtractionStatusSchema = z.enum(['pending_review', 'confirmed', 'rejected', 'failed']);
 export type ExtractionStatus = z.infer<typeof ExtractionStatusSchema>;
 
 export const ExtractionProviderNameSchema = z.enum(['mock', 'anthropic', 'openai']);

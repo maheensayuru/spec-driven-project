@@ -9,13 +9,12 @@ const migrationsFolder = fileURLToPath(new URL('./migrations', import.meta.url))
 
 export async function migrateDatabase(): Promise<void> {
   if (database.backend === 'postgres') {
-    await migrateNodePostgres(database.db, { migrationsFolder });
     await database.client.query(BOOTSTRAP_SQL);
+    await migrateNodePostgres(database.db, { migrationsFolder });
   } else {
-    await migratePglite(database.db, { migrationsFolder });
     await database.client.exec(BOOTSTRAP_SQL);
+    await migratePglite(database.db, { migrationsFolder });
   }
-
 }
 
 const isDirectRun =

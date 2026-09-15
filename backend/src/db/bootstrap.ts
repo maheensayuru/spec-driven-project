@@ -103,16 +103,37 @@ CREATE TABLE IF NOT EXISTS documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   obligation_id UUID REFERENCES obligations(id) ON DELETE SET NULL,
-  filename VARCHAR(255) NOT NULL,
-  mime_type VARCHAR(100) NOT NULL,
+  original_filename VARCHAR(255) NOT NULL,
+  sanitized_filename VARCHAR(255) NOT NULL,
+  declared_mime_type VARCHAR(100) NOT NULL,
+  detected_mime_type VARCHAR(100),
   file_size_bytes BIGINT NOT NULL,
-  file_hash_sha256 CHAR(64) NOT NULL,
+  file_hash_sha256 CHAR(64),
   storage_path VARCHAR(512) NOT NULL,
-  processing_status VARCHAR(50) NOT NULL DEFAULT 'uploaded',
+  processing_status VARCHAR(50) NOT NULL DEFAULT 'upload_pending',
+  security_status VARCHAR(50) NOT NULL DEFAULT 'scan_pending',
+  failure_reason TEXT,
   uploaded_by UUID NOT NULL REFERENCES users(id),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  extraction_started_at TIMESTAMPTZ,
+  extraction_completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS security_status VARCHAR(50) NOT NULL DEFAULT 'scan_pending';
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS original_filename VARCHAR(255);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS sanitized_filename VARCHAR(255);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS declared_mime_type VARCHAR(100);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS detected_mime_type VARCHAR(100);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS failure_reason TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS extraction_started_at TIMESTAMPTZ;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS extraction_completed_at TIMESTAMPTZ;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+CREATE INDEX IF NOT EXISTS idx_documents_org_processing_status ON documents(organization_id, processing_status);
+CREATE INDEX IF NOT EXISTS idx_documents_org_security_status ON documents(organization_id, security_status);
+CREATE INDEX IF NOT EXISTS idx_documents_org_created_at ON documents(organization_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_documents_obligation_id ON documents(obligation_id);
 CREATE TABLE IF NOT EXISTS extraction_stagings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
@@ -120,10 +141,18 @@ CREATE TABLE IF NOT EXISTS extraction_stagings (
   status VARCHAR(50) NOT NULL DEFAULT 'pending_review',
   overall_confidence REAL NOT NULL DEFAULT 0.0,
   extracted_fields JSONB NOT NULL,
-  reviewed_by UUID REFERENCES users(id),
+  provider VARCHAR(50),
+  provider_model VARCHAR(255),
+  provider_metadata JSONB,
+  failure_reason TEXT,
+  reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
   reviewed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_extraction_stagings_document_id ON extraction_stagings(document_id);
+CREATE INDEX IF NOT EXISTS idx_extraction_stagings_org_status ON extraction_stagings(organization_id, status);
+CREATE INDEX IF NOT EXISTS idx_extraction_stagings_org_created_at ON extraction_stagings(organization_id, created_at);
 
 CREATE TABLE IF NOT EXISTS contract_change_diffs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

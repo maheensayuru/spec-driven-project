@@ -1,6 +1,17 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  DeleteObjectCommand,
+  HeadBucketCommand,
+  CreateBucketCommand,
+  PutBucketCorsCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { SupportedDocumentMimeType } from '@renewalradar/shared';
 import { env } from '../../config/env.js';
+import { detectMagicBytes, sanitizeDocumentFilename } from './file-validation.service.js';
 
 export interface PresignedUploadResult {
   uploadUrl: string;
@@ -8,32 +19,180 @@ export interface PresignedUploadResult {
   expiresInSeconds: number;
 }
 
+export interface PresignedDownloadResult {
+  downloadUrl: string;
+  expiresInSeconds: number;
+}
+
+export interface PresignedUploadOptions {
+  organizationId: string;
+  documentId: string;
+  filename: string;
+  mimeType: string;
+  expiresInSeconds?: number;
+}
+
+export interface PresignedDownloadOptions {
+  storagePath: string;
+  filename?: string;
+  mimeType?: string;
+  disposition?: 'inline' | 'attachment';
+  expiresInSeconds?: number;
+}
+
+export interface ObjectMetadataResult {
+  contentLength: number;
+  contentType?: string;
+  etag?: string;
+  lastModified?: Date;
+  metadata?: Record<string, string>;
+}
+
 export class StorageService {
-  private static client: S3Client = new S3Client({
-    endpoint: env.S3_ENDPOINT,
-    region: env.S3_REGION,
-    credentials: {
-      accessKeyId: env.S3_ACCESS_KEY_ID,
-      secretAccessKey: env.S3_SECRET_ACCESS_KEY,
-    },
-    forcePathStyle: env.S3_FORCE_PATH_STYLE,
-  });
+  private client: S3Client;
+  private bucket: string;
+  private bucketInitialized = false;
+
+  private static defaultInstance: StorageService | null = null;
+
+  constructor(customClient?: S3Client, bucketName?: string) {
+    this.bucket = bucketName ?? env.S3_BUCKET;
+    this.client =
+      customClient ??
+      new S3Client({
+        endpoint: env.S3_ENDPOINT,
+        region: env.S3_REGION,
+        credentials: {
+          accessKeyId: env.S3_ACCESS_KEY_ID,
+          secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+        },
+        forcePathStyle: env.S3_FORCE_PATH_STYLE,
+      });
+  }
+
+  static getInstance(): StorageService {
+    if (!this.defaultInstance) {
+      this.defaultInstance = new StorageService();
+    }
+    return this.defaultInstance;
+  }
 
   /**
-   * Generates a secure, 5-minute presigned upload URL partitioned by tenant.
-   * Path invariant: documents/{organizationId}/{documentId}/{filename}
+   * Lazily ensures the S3/MinIO bucket exists and configures browser CORS.
    */
-  static async generatePresignedUploadUrl(
+  async ensureBucket(): Promise<void> {
+    if (this.bucketInitialized) {
+      return;
+    }
+    try {
+      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+    } catch (err: unknown) {
+      const error = err as { name?: string; $metadata?: { httpStatusCode?: number } };
+      const isNotFound =
+        error?.name === 'NotFound' ||
+        error?.name === 'NoSuchBucket' ||
+        error?.$metadata?.httpStatusCode === 404;
+      if (isNotFound) {
+        try {
+          await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
+        } catch (createErr: unknown) {
+          const cError = createErr as { name?: string };
+          const isRace =
+            cError?.name === 'BucketAlreadyOwnedByYou' || cError?.name === 'BucketAlreadyExists';
+          if (!isRace) {
+            if (env.NODE_ENV !== 'test') {
+              throw createErr;
+            }
+            return;
+          }
+        }
+      } else {
+        if (env.NODE_ENV !== 'test') {
+          throw err;
+        }
+        return;
+      }
+    }
+
+    try {
+      await this.client.send(
+        new PutBucketCorsCommand({
+          Bucket: this.bucket,
+          CORSConfiguration: {
+            CORSRules: [
+              {
+                AllowedHeaders: ['*'],
+                AllowedMethods: ['GET', 'PUT', 'HEAD'],
+                AllowedOrigins: [env.FRONTEND_URL],
+                ExposeHeaders: ['ETag', 'Content-Length', 'Content-Type'],
+                MaxAgeSeconds: 3000,
+              },
+            ],
+          },
+        }),
+      );
+    } catch {
+      // Some local S3 test environments do not support CORS commands; ignore gracefully
+    }
+
+    this.bucketInitialized = true;
+  }
+
+  /**
+   * Builds the canonical tenant-partitioned object key:
+   * documents/{organizationId}/{documentId}/{sanitizedFilename}
+   */
+  static getStoragePath(
     organizationId: string,
     documentId: string,
-    filename: string,
-    mimeType: string,
+    sanitizedFilename: string,
+  ): string {
+    return `documents/${organizationId}/${documentId}/${sanitizedFilename}`;
+  }
+
+  /**
+   * Generates a secure presigned upload URL (PUT) expiring in <= 300 seconds.
+   * Supports both positional arguments and options object.
+   */
+  async generatePresignedUploadUrl(
+    orgIdOrOptions: string | PresignedUploadOptions,
+    docId?: string,
+    fname?: string,
+    mtype?: string,
+    expiresIn?: number,
   ): Promise<PresignedUploadResult> {
-    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storagePath = `documents/${organizationId}/${documentId}/${sanitizedFilename}`;
+    let organizationId: string;
+    let documentId: string;
+    let filename: string;
+    let mimeType: string;
+    let requestedExpires = 300;
+
+    if (typeof orgIdOrOptions === 'object') {
+      organizationId = orgIdOrOptions.organizationId;
+      documentId = orgIdOrOptions.documentId;
+      filename = orgIdOrOptions.filename;
+      mimeType = orgIdOrOptions.mimeType;
+      requestedExpires = orgIdOrOptions.expiresInSeconds ?? 300;
+    } else {
+      organizationId = orgIdOrOptions;
+      documentId = docId!;
+      filename = fname!;
+      mimeType = mtype!;
+      requestedExpires = expiresIn ?? 300;
+    }
+
+    const expiresInSeconds = Math.min(Math.max(1, requestedExpires), 300);
+    const sanitizedFilename = sanitizeDocumentFilename(filename);
+    const storagePath = StorageService.getStoragePath(
+      organizationId,
+      documentId,
+      sanitizedFilename,
+    );
+
+    await this.ensureBucket();
 
     const command = new PutObjectCommand({
-      Bucket: env.S3_BUCKET,
+      Bucket: this.bucket,
       Key: storagePath,
       ContentType: mimeType,
       Metadata: {
@@ -42,8 +201,9 @@ export class StorageService {
       },
     });
 
-    const expiresInSeconds = 300; // 5 minutes
-    const uploadUrl = await getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+    const uploadUrl = await getSignedUrl(this.client, command, {
+      expiresIn: expiresInSeconds,
+    });
 
     return {
       uploadUrl,
@@ -52,39 +212,206 @@ export class StorageService {
     };
   }
 
+  static async generatePresignedUploadUrl(
+    orgIdOrOptions: string | PresignedUploadOptions,
+    docId?: string,
+    fname?: string,
+    mtype?: string,
+    expiresIn?: number,
+  ): Promise<PresignedUploadResult> {
+    return this.getInstance().generatePresignedUploadUrl(
+      orgIdOrOptions,
+      docId,
+      fname,
+      mtype,
+      expiresIn,
+    );
+  }
+
   /**
-   * Validates file content by checking binary magic byte signatures, preventing MIME spoofing.
+   * Generates a signed preview or attachment download URL expiring in <= 300 seconds.
+   * Explicitly sets Content-Disposition and Content-Type. No public or permanent URL is ever produced.
    */
-  static validateMagicBytes(
-    buffer: Buffer,
-  ): 'application/pdf' | 'image/png' | 'image/jpeg' | 'image/tiff' | null {
-    if (buffer.length < 4) {
-      return null;
+  async generatePresignedDownloadUrl(
+    options: PresignedDownloadOptions,
+  ): Promise<PresignedDownloadResult> {
+    const expiresInSeconds = Math.min(Math.max(1, options.expiresInSeconds ?? 300), 300);
+
+    const disposition = options.disposition ?? 'inline';
+    let responseContentDisposition = 'inline';
+    if (disposition === 'attachment') {
+      const downloadName = options.filename
+        ? sanitizeDocumentFilename(options.filename)
+        : (options.storagePath.split('/').pop() ?? 'download');
+      responseContentDisposition = `attachment; filename="${downloadName}"`;
     }
 
-    // PDF: %PDF- (\x25\x50\x44\x46)
-    if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
-      return 'application/pdf';
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: options.storagePath,
+      ResponseContentDisposition: responseContentDisposition,
+      ResponseContentType: options.mimeType,
+    });
+
+    const downloadUrl = await getSignedUrl(this.client, command, {
+      expiresIn: expiresInSeconds,
+    });
+
+    return {
+      downloadUrl,
+      expiresInSeconds,
+    };
+  }
+
+  static async generatePresignedDownloadUrl(
+    options: PresignedDownloadOptions,
+  ): Promise<PresignedDownloadResult> {
+    return this.getInstance().generatePresignedDownloadUrl(options);
+  }
+
+  /**
+   * Retrieves object headers (Content-Length, Content-Type, ETag, LastModified).
+   */
+  async headObject(storagePath: string): Promise<ObjectMetadataResult> {
+    const response = await this.client.send(
+      new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: storagePath,
+      }),
+    );
+
+    return {
+      contentLength: response.ContentLength ?? 0,
+      contentType: response.ContentType,
+      etag: response.ETag,
+      lastModified: response.LastModified,
+      metadata: response.Metadata,
+    };
+  }
+
+  static async headObject(storagePath: string): Promise<ObjectMetadataResult> {
+    return this.getInstance().headObject(storagePath);
+  }
+
+  /**
+   * Retrieves object content, bounded by options.maxBytes to prevent memory exhaustion.
+   */
+  async getObject(storagePath: string, options?: { maxBytes?: number }): Promise<Buffer> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: storagePath,
+    });
+
+    const response = await this.client.send(command);
+    if (!response.Body) {
+      return Buffer.alloc(0);
     }
 
-    // PNG: \x89PNG (\x89\x50\x4E\x47)
-    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
-      return 'image/png';
+    const stream = response.Body as unknown as {
+      transformToByteArray?: () => Promise<Uint8Array>;
+      [Symbol.asyncIterator]?: () => AsyncIterableIterator<Uint8Array | Buffer>;
+    };
+
+    if (typeof stream.transformToByteArray === 'function') {
+      const bytes = await stream.transformToByteArray();
+      const buf = Buffer.from(bytes);
+      if (options?.maxBytes && buf.length > options.maxBytes) {
+        throw new Error(
+          `Object size (${buf.length} bytes) exceeds bounded maximum read limit (${options.maxBytes} bytes)`,
+        );
+      }
+      return buf;
     }
 
-    // JPEG: \xFF\xD8\xFF
-    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-      return 'image/jpeg';
+    if (stream[Symbol.asyncIterator]) {
+      const chunks: Buffer[] = [];
+      let total = 0;
+      for await (const chunk of stream as AsyncIterable<Uint8Array | Buffer>) {
+        const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        chunks.push(b);
+        total += b.length;
+        if (options?.maxBytes && total > options.maxBytes) {
+          throw new Error(
+            `Object size exceeds bounded maximum read limit (${options.maxBytes} bytes)`,
+          );
+        }
+      }
+      return Buffer.concat(chunks);
     }
 
-    // TIFF: II*\0 (little endian: \x49\x49\x2A\x00) or MM\0* (big endian: \x4D\x4D\x00\x2A)
-    if (
-      (buffer[0] === 0x49 && buffer[1] === 0x49 && buffer[2] === 0x2a && buffer[3] === 0x00) ||
-      (buffer[0] === 0x4d && buffer[1] === 0x4d && buffer[2] === 0x00 && buffer[3] === 0x2a)
-    ) {
-      return 'image/tiff';
-    }
+    return Buffer.alloc(0);
+  }
 
-    return null;
+  static async getObject(storagePath: string, options?: { maxBytes?: number }): Promise<Buffer> {
+    return this.getInstance().getObject(storagePath, options);
+  }
+
+  /**
+   * Direct alias for getObject returning Buffer.
+   */
+  async getObjectBuffer(storagePath: string, options?: { maxBytes?: number }): Promise<Buffer> {
+    return this.getObject(storagePath, options);
+  }
+
+  static async getObjectBuffer(
+    storagePath: string,
+    options?: { maxBytes?: number },
+  ): Promise<Buffer> {
+    return this.getInstance().getObjectBuffer(storagePath, options);
+  }
+
+  /**
+   * Deletes an object by key.
+   */
+  async deleteObject(storagePath: string): Promise<void> {
+    await this.client.send(
+      new DeleteObjectCommand({
+        Bucket: this.bucket,
+        Key: storagePath,
+      }),
+    );
+  }
+
+  static async deleteObject(storagePath: string): Promise<void> {
+    return this.getInstance().deleteObject(storagePath);
+  }
+
+  /**
+   * Puts an object directly into storage.
+   */
+  async putObject(
+    storagePath: string,
+    content: Buffer,
+    contentType?: string,
+    metadata?: Record<string, string>,
+  ): Promise<void> {
+    await this.ensureBucket();
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: storagePath,
+        Body: content,
+        ContentType: contentType,
+        Metadata: metadata,
+      }),
+    );
+  }
+
+  static async putObject(
+    storagePath: string,
+    content: Buffer,
+    contentType?: string,
+    metadata?: Record<string, string>,
+  ): Promise<void> {
+    return this.getInstance().putObject(storagePath, content, contentType, metadata);
+  }
+
+  /**
+   * Validates file content by checking binary magic byte signatures.
+   */
+  static validateMagicBytes(buffer: Buffer): SupportedDocumentMimeType | null {
+    return detectMagicBytes(buffer);
   }
 }
+
+export const storageService = StorageService.getInstance();
