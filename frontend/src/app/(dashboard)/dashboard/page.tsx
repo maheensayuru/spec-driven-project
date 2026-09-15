@@ -1,214 +1,215 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowRight, FlaskConical, RefreshCw, X } from 'lucide-react';
 import { DashboardMetricsResponse, ObligationResponse } from '@renewalradar/shared';
 import { MetricsCards } from '../../../components/dashboard/MetricsCards';
 import { UrgentActionsList } from '../../../components/dashboard/UrgentActionsList';
 import { DeadlineTimeline } from '../../../components/dashboard/DeadlineTimeline';
+import { useSession } from '../../../components/SessionProvider';
+import { apiRequest } from '../../../lib/api';
+import { runNotificationScan } from '../../../lib/scanner';
+
+interface ObligationListResponse {
+  items: ObligationResponse[];
+}
+
+const fetchAllObligations = async (): Promise<ObligationResponse[]> => {
+  const obligations: ObligationResponse[] = [];
+  const limit = 100;
+
+  for (let page = 1; ; page += 1) {
+    const response = await apiRequest<ObligationListResponse>(
+      `/obligations?page=${page}&limit=${limit}`,
+    );
+    obligations.push(...response.items);
+    if (response.items.length < limit) return obligations;
+  }
+};
 
 export default function DashboardPage() {
+  const { session } = useSession();
+  const organizationId = session?.organizationId;
+  const activeOrganizationId = useRef(organizationId);
+  activeOrganizationId.current = organizationId;
   const [metrics, setMetrics] = useState<DashboardMetricsResponse | null>(null);
   const [timelineObligations, setTimelineObligations] = useState<ObligationResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [scanNotice, setScanNotice] = useState<string | null>(null);
+  const [scanNotice, setScanNotice] = useState<{
+    tone: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const dashboardRequestId = useRef(0);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
+    if (!organizationId || activeOrganizationId.current !== organizationId) return;
+
+    const requestId = ++dashboardRequestId.current;
     setIsLoading(true);
     setError(null);
+
     try {
-      const sampleMetrics: DashboardMetricsResponse = {
-        totalActiveObligations: 3,
-        totalAnnualCommittedSpend: 90820,
-        reportingCurrency: 'USD',
-        imminentNoticeDeadlinesCount: 2,
-        imminentRenewalsCount: 1,
-        pendingVerificationDocumentsCount: 0,
-        urgentActions: [
-          {
-            id: 'act-fleet-insurance',
-            obligationId: 'obl-3',
-            title: 'Fleet Commercial Auto & Liability Insurance',
-            vendor: 'Travelers Commercial',
-            actionType: 'notice_deadline_approaching',
-            dueDate: '2026-09-16',
-            daysRemaining: 5,
-            riskLevel: 'critical',
-            amount: 18500,
-            currency: 'USD',
-          },
-          {
-            id: 'act-google-workspace',
-            obligationId: 'obl-1',
-            title: 'Google Workspace Enterprise',
-            vendor: 'Google LLC',
-            actionType: 'notice_deadline_approaching',
-            dueDate: '2026-10-16',
-            daysRemaining: 35,
-            riskLevel: 'medium',
-            amount: 4320,
-            currency: 'USD',
-          },
-        ],
-        upcomingRenewalsTimeline: [],
-        spendByCurrencyBreakdown: { USD: 90820 },
-        spendByTypeBreakdown: {
-          subscription: 4320,
-          lease: 68000,
-          insurance: 18500,
-        },
-      };
-
-      const sampleTimeline: ObligationResponse[] = [
-        {
-          id: 'obl-3',
-          organizationId: 'org-1',
-          vendorId: null,
-          title: 'Fleet Commercial Auto & Liability Insurance',
-          type: 'insurance',
-          status: 'active',
-          amount: 18500,
-          currency: 'USD',
-          billingFrequency: 'annual',
-          renewalDate: '2026-10-31',
-          noticePeriodDays: 45,
-          cancellationDeadline: '2026-09-16',
-          autoRenew: true,
-          riskLevel: 'critical',
-          tags: ['compliance', 'vehicles'],
-          version: 1,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: 'obl-1',
-          organizationId: 'org-1',
-          vendorId: null,
-          title: 'Google Workspace Enterprise',
-          type: 'subscription',
-          status: 'active',
-          amount: 4320,
-          currency: 'USD',
-          billingFrequency: 'annual',
-          renewalDate: '2026-11-15',
-          noticePeriodDays: 30,
-          cancellationDeadline: '2026-10-16',
-          autoRenew: true,
-          riskLevel: 'medium',
-          tags: ['saas', 'productivity'],
-          version: 1,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: 'obl-2',
-          organizationId: 'org-1',
-          vendorId: null,
-          title: 'Warehouse Commercial Lease (Building 4B)',
-          type: 'lease',
-          status: 'active',
-          amount: 68000,
-          currency: 'USD',
-          billingFrequency: 'annual',
-          renewalDate: '2027-04-30',
-          noticePeriodDays: 90,
-          cancellationDeadline: '2027-01-30',
-          autoRenew: true,
-          riskLevel: 'high',
-          tags: ['facility', 'lease'],
-          version: 1,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ];
-
-      setMetrics(sampleMetrics);
-      setTimelineObligations(sampleTimeline);
+      const [response, obligations] = await Promise.all([
+        apiRequest<DashboardMetricsResponse>('/dashboard'),
+        fetchAllObligations(),
+      ]);
+      if (requestId === dashboardRequestId.current) {
+        setMetrics(response);
+        setTimelineObligations(obligations);
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch executive dashboard');
+      if (requestId === dashboardRequestId.current) {
+        setMetrics(null);
+        setTimelineObligations([]);
+        setError(err instanceof Error ? err.message : 'Failed to fetch executive dashboard');
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === dashboardRequestId.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [organizationId]);
+
+  useEffect(() => {
+    setMetrics(null);
+    setTimelineObligations([]);
+    setScanNotice(null);
+    void fetchDashboardData();
+
+    return () => {
+      dashboardRequestId.current += 1;
+    };
+  }, [fetchDashboardData]);
+
+  const handleManualScan = async () => {
+    setIsScanning(true);
+    setScanNotice(null);
+    const scanOrganizationId = organizationId;
+
+    try {
+      const result = await runNotificationScan();
+      if (activeOrganizationId.current !== scanOrganizationId) return;
+      setScanNotice({
+        tone: 'success',
+        message: `Scan complete: ${result.scanned} ${
+          result.scanned === 1 ? 'obligation' : 'obligations'
+        } scanned, ${result.alertsCreated} ${
+          result.alertsCreated === 1 ? 'alert' : 'alerts'
+        } created.`,
+      });
+      await fetchDashboardData();
+    } catch (err: unknown) {
+      if (activeOrganizationId.current === scanOrganizationId) {
+        setScanNotice({
+          tone: 'error',
+          message: err instanceof Error ? err.message : 'The deadline scanner could not complete.',
+        });
+      }
+    } finally {
+      setIsScanning(false);
     }
   };
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const handleManualScan = () => {
-    setIsScanning(true);
-    setScanNotice(null);
-    setTimeout(() => {
-      setScanNotice(
-        'Scanner completed: 3 obligations analyzed. 1 critical alert confirmed. 0 duplicate alerts created.',
-      );
-      setIsScanning(false);
-    }, 400);
-  };
-
   return (
-    <div className="min-h-screen bg-slate-50 py-6 sm:py-8 px-3 sm:px-6 lg:px-8 overflow-x-hidden">
-      <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
-        {/* Executive Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4">
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-                Executive Dashboard
-              </h1>
-              <span className="px-2 py-0.5 rounded-full text-[11px] sm:text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Live Monitoring Active
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Real-time awareness of upcoming contract renewal dates, cancellation notice windows,
-              and exposed spend.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <button
-              onClick={handleManualScan}
-              disabled={isScanning}
-              className="inline-flex items-center px-3 py-1.5 sm:px-4 sm:py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs sm:text-sm font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50"
-            >
-              {isScanning ? 'Scanning Deadlines...' : '⚡ Trigger Scanner Demo'}
-            </button>
-            <a
-              href="/obligations"
-              className="inline-flex items-center px-3 py-1.5 sm:px-4 sm:py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold rounded-lg shadow-sm transition-colors"
-            >
-              + Manage Obligations
-            </a>
-          </div>
+    <div className="space-y-6">
+      <header className="page-header">
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-description">
+            Review obligations that need attention and plan around upcoming notice deadlines.
+          </p>
         </div>
+        <a href="/obligations" className="btn btn-primary">
+          Manage obligations
+          <ArrowRight aria-hidden="true" className="h-4 w-4" />
+        </a>
+      </header>
 
-        {scanNotice && (
-          <div className="p-3 sm:p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-900 flex items-center justify-between">
-            <span>✓ {scanNotice}</span>
-            <button onClick={() => setScanNotice(null)} className="text-emerald-700 font-bold ml-4">
-              ✕
+      <section aria-label="Portfolio overview">
+        {error ? (
+          <div
+            className="feedback-error flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+            role="alert"
+          >
+            <div>
+              <p className="font-semibold">Dashboard data could not be loaded</p>
+              <p className="mt-0.5 text-sm">{error}</p>
+            </div>
+            <button
+              type="button"
+              onClick={fetchDashboardData}
+              className="btn btn-secondary shrink-0"
+            >
+              <RefreshCw aria-hidden="true" className="h-4 w-4" />
+              Retry
             </button>
           </div>
+        ) : (
+          <MetricsCards metrics={metrics} isLoading={isLoading} />
         )}
+      </section>
 
-        {/* Section 1: KPI Summary Cards */}
-        <section className="space-y-2">
-          <MetricsCards metrics={metrics} isLoading={isLoading} error={error} />
-        </section>
-
-        {/* Section 2: Split Grid: Urgent Actions & Timeline */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
-          <section>
+      {!error && (
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.85fr)]">
+          <section aria-label="Priority actions">
             <UrgentActionsList items={metrics?.urgentActions} isLoading={isLoading} />
           </section>
-
-          <section>
+          <section aria-label="Upcoming deadlines">
             <DeadlineTimeline obligations={timelineObligations} isLoading={isLoading} />
           </section>
         </div>
-      </div>
+      )}
+
+      {process.env.NODE_ENV !== 'production' && (
+        <section className="surface border-dashed p-4 sm:p-5" aria-labelledby="demo-tools-title">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <FlaskConical aria-hidden="true" className="h-4 w-4 text-slate-500" />
+                <h2 id="demo-tools-title" className="section-heading">
+                  Demo Tools
+                </h2>
+              </div>
+              <p className="mt-1 text-sm text-slate-500">
+                Run the persisted deadline scanner and refresh dashboard and notification data.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleManualScan}
+              disabled={isScanning}
+              className="btn btn-secondary shrink-0"
+            >
+              <RefreshCw
+                aria-hidden="true"
+                className={`h-4 w-4 ${isScanning ? 'animate-spin' : ''}`}
+              />
+              {isScanning ? 'Running scanner…' : 'Trigger Scanner Demo'}
+            </button>
+          </div>
+
+          {scanNotice && (
+            <div
+              className={`mt-4 flex items-start justify-between gap-3 ${
+                scanNotice.tone === 'success' ? 'feedback-success' : 'feedback-error'
+              }`}
+              role={scanNotice.tone === 'error' ? 'alert' : 'status'}
+            >
+              <span>{scanNotice.message}</span>
+              <button
+                type="button"
+                onClick={() => setScanNotice(null)}
+                aria-label="Dismiss demo scan result"
+                className="btn btn-ghost -mr-2 -mt-1 shrink-0 p-1.5"
+              >
+                <X aria-hidden="true" className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

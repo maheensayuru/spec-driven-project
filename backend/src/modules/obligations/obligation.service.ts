@@ -8,12 +8,8 @@ import {
   calculateNextRenewalDate,
   validateObligationDates,
 } from './deadline.calculator.js';
-import { TenantContext } from '../../db/connection.js';
-import { Obligation } from '../../db/schema/obligations.js';
-
-export interface ObligationWithVendor extends Obligation {
-  vendorName?: string;
-}
+import type { TenantContext } from '../../db/connection.js';
+import type { ObligationWithVendor } from './obligation.repository.js';
 
 const VALID_TRANSITIONS: Record<string, readonly string[]> = {
   draft: ['active', 'archived'],
@@ -67,7 +63,7 @@ export class ObligationService {
     tenant: TenantContext,
     input: CreateObligationRequest,
     actorId?: string,
-  ): Promise<Obligation> {
+  ): Promise<ObligationWithVendor> {
     // Validate date relationship constraints (startDate <= renewalDate <= expirationDate)
     validateObligationDates({
       startDate: input.startDate,
@@ -86,11 +82,16 @@ export class ObligationService {
       input.amount,
     );
 
+    const vendor = input.vendorName
+      ? await tenant.obligations.findOrCreateVendor(input.vendorName)
+      : undefined;
+
     const obligation = await tenant.obligations.create({
       title: input.title,
       type: input.type,
       amount: String(input.amount),
       currency: input.currency,
+      vendorId: vendor?.id,
       billingFrequency: input.billingFrequency,
       startDate: input.startDate,
       renewalDate: input.renewalDate,
@@ -102,6 +103,7 @@ export class ObligationService {
       internalOwnerId: input.internalOwnerId,
       status: input.status ?? 'active',
       notes: input.notes,
+      tags: input.tags,
       version: 1,
     });
 
@@ -110,7 +112,7 @@ export class ObligationService {
       afterState: obligation as unknown as Record<string, unknown>,
     });
 
-    return obligation;
+    return vendor ? { ...obligation, vendorName: vendor.name } : obligation;
   }
 
   /**
@@ -122,7 +124,7 @@ export class ObligationService {
     id: string,
     newStatus: string,
     actorId?: string,
-  ): Promise<Obligation> {
+  ): Promise<ObligationWithVendor> {
     const existing = await tenant.obligations.findById(id);
     if (!existing) {
       throw new Error('Obligation not found');
@@ -150,7 +152,7 @@ export class ObligationService {
       afterState: { status: newStatus },
     });
 
-    return updated;
+    return existing.vendorName ? { ...updated, vendorName: existing.vendorName } : updated;
   }
 
   /**
@@ -159,14 +161,25 @@ export class ObligationService {
   static async listObligations(
     tenant: TenantContext,
     query: ListObligationsQuery,
-  ): Promise<Obligation[]> {
-    return tenant.obligations.list(query.limit, (query.page - 1) * query.limit);
+  ): Promise<{ items: ObligationWithVendor[]; total: number }> {
+    return tenant.obligations.list({
+      type: query.type,
+      status: query.status,
+      riskLevel: query.riskLevel,
+      search: query.search,
+      upcomingDays: query.upcomingDays,
+      limit: query.limit,
+      offset: (query.page - 1) * query.limit,
+    });
   }
 
   /**
    * Retrieves an obligation by ID.
    */
-  static async getObligationById(tenant: TenantContext, id: string): Promise<Obligation | null> {
+  static async getObligationById(
+    tenant: TenantContext,
+    id: string,
+  ): Promise<ObligationWithVendor | null> {
     return tenant.obligations.findById(id);
   }
 
@@ -178,7 +191,7 @@ export class ObligationService {
     id: string,
     updates: Partial<CreateObligationRequest>,
     actorId?: string,
-  ): Promise<Obligation | null> {
+  ): Promise<ObligationWithVendor | null> {
     const existing = await tenant.obligations.findById(id);
     if (!existing) {
       return null;
@@ -198,8 +211,15 @@ export class ObligationService {
     const cancellationDeadline = calculateCancellationDeadline(renewalDate, noticePeriod);
     const riskLevel = this.calculateRiskLevel(renewalDate, cancellationDeadline, amount);
 
+    const { vendorName, ...obligationUpdates } = updates;
+    const vendor =
+      vendorName !== undefined
+        ? await tenant.obligations.findOrCreateVendor(vendorName)
+        : undefined;
+
     const updated = await tenant.obligations.update(id, {
-      ...updates,
+      ...obligationUpdates,
+      ...(vendor ? { vendorId: vendor.id } : {}),
       amount: updates.amount !== undefined ? String(updates.amount) : undefined,
       cancellationDeadline,
       riskLevel,
@@ -214,7 +234,11 @@ export class ObligationService {
       });
     }
 
-    return updated;
+    if (!updated) {
+      return null;
+    }
+    const resolvedVendorName = vendor?.name ?? existing.vendorName;
+    return resolvedVendorName ? { ...updated, vendorName: resolvedVendorName } : updated;
   }
 
   /**
@@ -243,7 +267,7 @@ export class ObligationService {
     tenant: TenantContext,
     id: string,
     actorId?: string,
-  ): Promise<Obligation | null> {
+  ): Promise<ObligationWithVendor | null> {
     const existing = await tenant.obligations.findById(id);
     if (!existing) {
       return null;
@@ -274,6 +298,9 @@ export class ObligationService {
       });
     }
 
-    return updated;
+    if (!updated) {
+      return null;
+    }
+    return existing.vendorName ? { ...updated, vendorName: existing.vendorName } : updated;
   }
 }

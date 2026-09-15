@@ -2,6 +2,12 @@
 
 This guide details the exact sequence, commands, and talking points for presenting the RenewalRadar P1 Minimum Viable Product (US1 through US4).
 
+### Runtime integration update
+
+`fix/runtime-integration` connects the redesigned frontend to real backend APIs. All dashboard metrics, obligation CRUD, search/filter, notifications, scanner, team members, and invitations now read from and write to PostgreSQL. Created obligations, alerts, and acknowledgments persist across API restarts. The PGlite fallback remains available when Docker is not running.
+
+Use the development frontend (`npm run dev --workspace=frontend`) for presentations: demo credential autofill and Demo Tools are development-only and intentionally absent from production builds.
+
 ---
 
 ## 1. Prerequisites & Clean Startup
@@ -34,7 +40,7 @@ _Healthcheck confirms readiness:_ `http://localhost:4000/health`
 
 ```bash
 cd C:\tmp\spec-driven-project
-npm run start --workspace=frontend
+npm run dev --workspace=frontend
 ```
 
 _Frontend URL:_ `http://localhost:3000`
@@ -72,21 +78,21 @@ _Safeguard_: This script verifies `NODE_ENV !== 'production'` and resets only de
 - **Route**: `http://localhost:3000/dashboard`
 - **Talking Point**: _"Small and medium businesses manage dozens of vendor contracts, leases, and policies. Important deadlines get buried. RenewalRadar answers one central question every morning: What do I need to do today before money or compliance are lost?"_
 - **Highlight**:
-  - **Active Obligations**: 3 monitored contracts.
-  - **Upcoming Renewals**: 1 renewal within 30 days.
-  - **Urgent Action Items**: 2 items requiring executive attention.
-  - **Annual Committed Spend**: $90,820 normalized across all active vendors.
+  - **Active Obligations**: seeded obligations from `npm run demo:reset`.
+  - **Upcoming Renewals**: renewals within 30 days.
+  - **Urgent Action Items**: items requiring executive attention.
+  - **Annual Committed Spend**: normalized across all active vendors.
 
 ### Step B: Urgent Contract Inspection
 
-- **Action**: In the **"Urgent Actions Needed"** section, locate **Fleet Commercial Auto & Liability Insurance**.
-- **Talking Point**: _"Notice the red Critical chip. This state-mandated fleet policy has a 45-day cancellation notice requirement. Our deterministic calculation engine determined that the cancellation deadline is September 16: exactly 5 days away. Missing this window commits the company to another full year."_
-- **Action**: Click **"Inspect →"** to transition smoothly to the obligations list.
+- **Action**: In **Priority attention**, locate the fleet insurance item and its Critical badge.
+- **Talking Point**: _"The priority list puts the decision date, vendor, commitment amount, and review action together."_
+- **Action**: Click **Inspect** to open the matching obligation's edit dialog. The dashboard and obligation register read from the same PostgreSQL data.
 
 ### Step C: Manual Obligation Creation & Date Arithmetic
 
 - **Route**: `http://localhost:3000/obligations`
-- **Action**: Click **"+ Add Obligation"**.
+- **Action**: Click **Add Obligation**.
 - **Form Demonstration**:
   - Title: `Snowflake Data Cloud Warehouse`
   - Vendor: `Snowflake Inc.`
@@ -96,36 +102,34 @@ _Safeguard_: This script verifies `NODE_ENV !== 'production'` and resets only de
   - Start Date: `2026-01-01`
   - Renewal Date: `2026-11-30`
   - Notice Period (Days): Type `60`.
-- **Highlight**: Look at the purple highlight box. As you change Notice Period from 30 to 60, the **Calculated Cancellation Deadline** dynamically shifts from `2026-10-31` to `2026-10-01`.
-- **Action**: Click **"Save & Track Obligation"**. The obligation immediately appears in the searchable table.
-- **Search Demo**: Type `Snowflake` in the search bar. The table filters instantly.
+- **Highlight**: In the **Calculated cancellation deadline** preview, changing Notice period from 30 to 60 shifts the date from `2026-10-31` to `2026-10-01`.
+- **Action**: Click **Save obligation**. The obligation is persisted to PostgreSQL and appears in the searchable register. **View & edit** on smaller screens or **Edit** on desktop reopens it.
+- **Search Demo**: Type `Snowflake` in the search bar. The table filters instantly against the real backend.
 
 ### Step D: Autonomous Monitoring & Idempotency
 
-- **Talking Point**: _"RenewalRadar does not depend on users remembering to log in every morning. It runs an autonomous daily background scanner."_
-- **Action**: Click the **"⚡ Trigger Scanner Demo"** button in the header (or open the Notification Bell and click "Scan Now").
-- **Highlight**:
-  - A confirmation banner appears: _"Scanner completed: 3 obligations analyzed. 1 critical alert confirmed. 0 duplicate alerts created."_
-  - The notification bell updates with an unread badge (`2`).
-  - Open the **Notification Drawer**: Point out the Critical severity alert and the milestone indicator (`7_day`).
-  - Click **"⚡ Trigger Scanner Demo"** a second time.
-  - Point out that **0 duplicate alerts** were created. Explain that every alert is protected by an immutable composite idempotency key (`org_id:obligation_id:milestone:date`).
+- **Talking Point**: _"RenewalRadar's deadline scanner runs automatically. This demo control triggers it manually to show real-time alert creation."_
+- **Action**: In the dashboard's **Demo Tools** area, click **Trigger Scanner Demo**.
+- **Highlight**: The scanner evaluates real obligations and creates persisted alerts. Running it again produces zero duplicates (idempotency).
+- Open the notification bell. The drawer displays real alerts in Critical / High / Medium / Low order, with milestone and trigger-date metadata.
+- Click **Mark as read** to acknowledge an alert. The acknowledgment persists in PostgreSQL and reduces the unread badge.
+- A separate **Demo tools** area inside the drawer also provides **Trigger Scanner Demo**.
 
 ### Step E: Multi-Tenant RBAC & Team Governance
 
-- **Route**: `http://localhost:3000/settings/team` (click "Team & Roles" in top nav)
+- **Route**: `http://localhost:3000/settings/team` (click **Team & Roles** in the sidebar or mobile navigation)
 - **Talking Point**: _"RenewalRadar is built with multi-tenant zero trust by construction. Every query is partitioned by organization ID, and role-based access control governs all actions."_
 - **Highlight**:
   - Point out the 4 defined roles: **Owner**, **Admin**, **Member**, **Viewer**.
   - Point out the current members: Sarah Jenkins (Owner), Dave Miller (Admin), Alex Chen (Member).
-- **Action**: Click **"+ Invite Member"**. Enter `intern@acmelogistics.com` and select role **"Viewer (Read-only)"**.
-- **Action**: Click **"Send Invitation"**. Point out the generated single-use token expiring in 7 days.
-- **Talking Point**: _"Viewers can inspect obligations and dashboards, but our test suite verifies that any mutative POST, PATCH, or DELETE request from a Viewer is rejected with 403 Forbidden. Furthermore, cross-tenant lookups return 404 to prevent resource enumeration."_
+- **Action**: Click **Invite member**. Enter `intern@acmelogistics.com` and select **Viewer**.
+- **Action**: Click **Send invitation**. The invitation is created in PostgreSQL with a 7-day expiry. The entry appears under **Pending invitations**, not active members.
+- **Talking Point**: _"The role guide explains the access model. Invitations are single-use tokens that expire after 7 days. Accepting one creates a real user account with the assigned role."_
 
 ### Step F: Return to Dashboard
 
-- **Route**: Click **"Dashboard"** in the top navigation bar.
-- **Talking Point**: _"The dashboard reflects the updated state, showing that RenewalRadar maintains continuous operational oversight over all corporate commitments."_
+- **Route**: Click **Dashboard** in the sidebar or mobile navigation.
+- **Talking Point**: _"The redesigned workspace brings upcoming decisions and deadlines into one readable view."_
 
 ---
 
@@ -158,7 +162,7 @@ Restart frontend in Terminal 3:
 
 ```bash
 cd C:\tmp\spec-driven-project
-npm run start --workspace=frontend
+npm run dev --workspace=frontend
 ```
 
 ### Scenario 4: Database records become corrupted during practice

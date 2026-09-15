@@ -5,10 +5,16 @@ import { TeamSettings } from '../../../../components/organizations/TeamSettings'
 
 export default function TeamSettingsPage() {
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-5xl mx-auto">
-        <TeamSettings />
-      </div>
+    <div className="space-y-6">
+      <header className="page-header">
+        <div>
+          <h1 className="page-title">Team &amp; roles</h1>
+          <p className="page-description">
+            Manage organization access and understand each role&apos;s restrictions.
+          </p>
+        </div>
+      </header>
+      <TeamSettings />
     </div>
   );
 }

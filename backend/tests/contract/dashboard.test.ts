@@ -23,11 +23,12 @@ describe('Executive Dashboard Contract Tests (User Story 4 & FR-021)', () => {
       tenantContextFactory: (organizationId: string) => ({
         organizationId,
         obligations: {
+          async findOrCreateVendor() { throw new Error('Unexpected vendor lookup in this test'); },
           async findById() {
             return null;
           },
           async list() {
-            return [
+            const items = [
               {
                 id: 'obl-1',
                 organizationId,
@@ -79,6 +80,7 @@ describe('Executive Dashboard Contract Tests (User Story 4 & FR-021)', () => {
                 updatedAt: new Date(),
               },
             ];
+            return { items, total: items.length };
           },
           async create() {
             throw new Error('Not implemented in mock');

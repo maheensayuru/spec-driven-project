@@ -16,11 +16,15 @@ function createMockTenantContext(organizationId: string): TenantContext {
   const auditLogs: AuditEvent[] = [];
 
   const obligations: TenantObligationsContext = {
+    async findOrCreateVendor(name) {
+      return { id: 'vendor-workflow-test', organizationId, name, contactEmail: null, website: null, notes: null, createdAt: new Date(0), updatedAt: new Date(0) };
+    },
     async findById(id: string): Promise<Obligation | null> {
       return store.get(id) ?? null;
     },
-    async list(): Promise<Obligation[]> {
-      return Array.from(store.values());
+    async list() {
+      const items = Array.from(store.values());
+      return { items, total: items.length };
     },
     async create(
       data: Omit<Obligation, 'organizationId' | 'id' | 'createdAt' | 'updatedAt'>,

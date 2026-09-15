@@ -1,15 +1,29 @@
 # RenewalRadar: Engineering & Architecture Development Handoff
 
 **Project**: RenewalRadar (B2B SaaS Contract & Obligation Monitoring Platform)  
-**Date**: 2026-09-05  
-**Current Branch**: `chore/presentation-hardening`  
-**Current Status**: P1 Full-Stack MVP (US1 through US4) Complete & Hardened for Demonstration
+**Date**: 2026-09-15  
+**Current Branch**: `fix/runtime-integration`  
+**Current Status**: P1 Full-Stack MVP (US1 through US4) Complete, Hardened, and Runtime-Verified
+
+### Runtime integration branch addendum
+
+`fix/runtime-integration` was created from `feat/uiux-redesign` (commit `ca3f802` base). The redesigned frontend now connects to real backend APIs with no local fixtures, simulated handlers, or sample data arrays.
+
+- All frontend data flows (Dashboard metrics, obligations CRUD, search/filter, notifications, scanner, team members, invitations, RBAC enforcement) call real backend API endpoints and persist to PostgreSQL.
+- The PGlite embedded fallback is preserved: when Docker/PostgreSQL is unavailable, the backend automatically uses PGlite with durable on-disk persistence. An invalid PostgreSQL password correctly fails rather than silently falling back.
+- `npm run test --workspace=backend`: **110 tests** passed across **28 files**.
+- `npm run build`: shared, backend, and frontend workspaces built successfully (Next.js compiled, types valid).
+- Prettier formatting passed for all frontend source files.
+- Responsive verification at 375px, 768px, and 1280px: zero horizontal overflow on any page, form dialog, or notification drawer.
+- Full browser journey verified against real PostgreSQL: login → dashboard → obligation create → edit → scanner → alert acknowledgment → team/RBAC → viewer invitation acceptance → viewer write restriction (403) → invitation reuse rejection (400).
+- Created obligations, edited amounts/vendors, scanner alerts, and acknowledgments all survive API restarts and are verified directly in PostgreSQL.
+- **Previous acceptance blocker resolved:** the HTTP 500 / `28P01` PostgreSQL authentication error was caused by Docker Desktop mapping the container to port 5433 instead of the expected 5432. The `DATABASE_URL` in `.env` now uses port 5433 to match the running Docker configuration. No authentication logic, schema, or backend code was changed.
 
 ---
 
 ## 1. Executive Status & Test Metrics
 
-- **Backend Automated Test Suite**: **108 tests passing** across 27 test files (0 failures).
+- **Backend Automated Test Suite**: **110 tests passing** across 28 test files (0 failures).
 - **Workspace Build**: Success across `@renewalradar/shared`, `@renewalradar/backend`, and `@renewalradar/frontend` (Next.js 14).
 - **Performance Benchmark (SC-006 & T039)**: p95 latency of **4.19 ms** for 500 active obligations (SLA target: $< 350\text{ms}$).
 - **Security Check**: Clean Git history. 0 tokens or credentials committed. Zero-trust multi-tenant isolation enforced.
@@ -64,13 +78,13 @@
 
 ### Frontend Architecture (Next.js 14 App Router on Port 3000)
 
-- **Layout Shell**: `frontend/src/app/layout.tsx` (Responsive header with branding, navigation links, and `NotificationDrawer`).
+- **Layout Shell**: `frontend/src/app/layout.tsx` delegates to `components/AppShell.tsx` (desktop sidebar, tablet/mobile navigation row, workspace identity, and notification drawer; no workspace navigation on login).
 - **Pages**:
   - `/`: Redirects to `/dashboard`.
   - `/login`: Professional sign-in screen with one-click demo credentials assistant.
   - `/dashboard`: Executive dashboard with KPI cards, urgent action list, and timeline.
   - `/obligations`: Filterable obligation table with search and modal creation/edit form.
-  - `/settings/team`: Team member management with role badges and invite drawer.
+  - `/settings/team`: Member list, role guide, invite modal, and pending invitations from the real backend.
 - **Components**:
   - `ObligationForm`: Form with live cancellation deadline preview and input validation.
   - `MetricsCards`: Responsive KPI summary cards with loading/error/zero states.
@@ -96,7 +110,7 @@ npm run demo:reset
 npm run dev --workspace=backend
 
 # 4. Start Frontend (Port 3000)
-npm run start --workspace=frontend
+npm run dev --workspace=frontend
 ```
 
 ### Environment Variables (.env)
@@ -106,7 +120,7 @@ NODE_ENV=development
 PORT=4000
 FRONTEND_URL=http://localhost:3000
 SESSION_SECRET=renewalradar_super_secure_session_secret_32_bytes_min
-DATABASE_URL=postgresql://renewalradar:local_dev_password@localhost:5432/renewalradar_dev
+DATABASE_URL=postgresql://renewalradar:local_dev_password@localhost:5433/renewalradar_dev
 REDIS_URL=redis://localhost:6379
 S3_ENDPOINT=http://localhost:9000
 S3_BUCKET=renewalradar-documents

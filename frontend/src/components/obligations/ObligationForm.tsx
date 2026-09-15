@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   CreateObligationRequest,
   ObligationType,
@@ -13,6 +13,7 @@ export interface ObligationFormProps {
   onSubmit: (data: CreateObligationRequest) => Promise<void>;
   onCancel?: () => void;
   isLoading?: boolean;
+  readOnly?: boolean;
 }
 
 export const ObligationForm: React.FC<ObligationFormProps> = ({
@@ -20,6 +21,7 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
   onSubmit,
   onCancel,
   isLoading = false,
+  readOnly = false,
 }) => {
   const [title, setTitle] = useState(initialData?.title ?? '');
   const [type, setType] = useState<ObligationType>(initialData?.type ?? 'subscription');
@@ -38,11 +40,13 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
   const [autoRenew, setAutoRenew] = useState(initialData?.autoRenew ?? true);
   const [tags, setTags] = useState<string>(initialData?.tags?.join(', ') ?? '');
   const [notes, setNotes] = useState(initialData?.notes ?? '');
-
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const submissionLockRef = useRef(false);
 
-  // Live calculation of cancellation deadline (Formula: renewal_date - notice_period_days)
+  // Formula: renewal_date - notice_period_days. UTC keeps the date stable across time zones.
   const computedCancellationDeadline = useMemo<string | null>(() => {
     if (!renewalDate) return null;
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(renewalDate);
@@ -51,13 +55,11 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
     const year = parseInt(match[1]!, 10);
     const month = parseInt(match[2]!, 10) - 1;
     const day = parseInt(match[3]!, 10);
-
     const renewal = new Date(Date.UTC(year, month, day));
     if (isNaN(renewal.getTime())) return null;
 
     const days = Math.max(0, noticePeriodDays || 0);
     const deadline = new Date(renewal.getTime() - days * 24 * 60 * 60 * 1000);
-
     const outY = deadline.getUTCFullYear();
     const outM = String(deadline.getUTCMonth() + 1).padStart(2, '0');
     const outD = String(deadline.getUTCDate()).padStart(2, '0');
@@ -65,7 +67,7 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
     return `${outY}-${outM}-${outD}`;
   }, [renewalDate, noticePeriodDays]);
 
-  const validate = (): boolean => {
+  const validate = (): Record<string, string> => {
     const newErrors: Record<string, string> = {};
 
     if (!title.trim()) {
@@ -98,14 +100,20 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return newErrors;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitError(null);
+    if (readOnly || submissionLockRef.current || isLoading) return;
 
-    if (!validate()) {
+    setSubmitError(null);
+    const validationErrors = validate();
+
+    if (Object.keys(validationErrors).length > 0) {
+      requestAnimationFrame(() => {
+        formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      });
       return;
     }
 
@@ -124,274 +132,348 @@ export const ObligationForm: React.FC<ObligationFormProps> = ({
       autoRenew,
       tags: tags
         .split(',')
-        .map((t) => t.trim())
+        .map((tag) => tag.trim())
         .filter(Boolean),
       notes: notes.trim() || undefined,
     };
 
+    submissionLockRef.current = true;
+    setSubmitting(true);
     try {
       await onSubmit(payload);
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Submission failed');
+    } finally {
+      submissionLockRef.current = false;
+      setSubmitting(false);
     }
   };
 
-  return (
-    <form
-      onSubmit={handleSubmit}
-      className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 max-w-4xl mx-auto space-y-6"
-    >
-      <div className="border-b border-slate-100 pb-4">
-        <h2 className="text-xl font-bold text-slate-900">
-          {initialData ? 'Edit Obligation' : 'Add New Business Obligation'}
-        </h2>
-        <p className="text-sm text-slate-500 mt-1">
-          Record vendor agreements, subscriptions, or policies for continuous monitoring.
-        </p>
-      </div>
+  const isSubmitting = isLoading || submitting;
 
+  return (
+    <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
       {submitError && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+        <div role="alert" className="feedback-error rounded-md border border-red-200 bg-red-50 p-3">
           {submitError}
         </div>
       )}
 
-      {/* Basic Information */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Obligation Title *
-          </label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Google Workspace Enterprise"
-            className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
-              errors.title
-                ? 'border-red-500 focus:ring-red-200'
-                : 'border-slate-300 focus:ring-indigo-100 focus:border-indigo-600'
-            }`}
-          />
-          {errors.title && <p className="text-xs text-red-600 mt-1">{errors.title}</p>}
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Vendor / Provider</label>
-          <input
-            type="text"
-            value={vendorName}
-            onChange={(e) => setVendorName(e.target.value)}
-            placeholder="e.g. Google LLC"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Type *</label>
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value as ObligationType)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600"
-          >
-            <option value="subscription">Subscription</option>
-            <option value="contract">Contract</option>
-            <option value="license">License</option>
-            <option value="permit">Permit</option>
-            <option value="insurance">Insurance</option>
-            <option value="warranty">Warranty</option>
-            <option value="vendor_agreement">Vendor Agreement</option>
-            <option value="lease">Lease</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Billing Frequency *
-          </label>
-          <select
-            value={billingFrequency}
-            onChange={(e) => setBillingFrequency(e.target.value as BillingFrequency)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600"
-          >
-            <option value="monthly">Monthly</option>
-            <option value="quarterly">Quarterly</option>
-            <option value="annual">Annual</option>
-            <option value="biennial">Biennial (Every 2 years)</option>
-            <option value="one_time">One Time</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Financials */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Amount *</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-            className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
-              errors.amount
-                ? 'border-red-500 focus:ring-red-200'
-                : 'border-slate-300 focus:ring-indigo-100 focus:border-indigo-600'
-            }`}
-          />
-          {errors.amount && <p className="text-xs text-red-600 mt-1">{errors.amount}</p>}
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Currency *</label>
-          <select
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600"
-          >
-            <option value="USD">USD ($)</option>
-            <option value="EUR">EUR (€)</option>
-            <option value="GBP">GBP (£)</option>
-            <option value="CAD">CAD ($)</option>
-            <option value="AUD">AUD ($)</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Key Dates & Live Calculated Cancellation Notice */}
-      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-800">Renewal Deadlines & Notice Windows</h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">
-              Start Date (Optional)
+      <fieldset disabled={readOnly} className="space-y-4">
+        <legend className="section-heading">Basic information</legend>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label htmlFor="obligation-title" className="field-label">
+              Obligation title <span aria-hidden="true">*</span>
             </label>
             <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+              id="obligation-title"
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Google Workspace Enterprise"
+              required
+              aria-invalid={errors.title ? true : undefined}
+              aria-describedby={errors.title ? 'obligation-title-error' : undefined}
+              className="field"
             />
-            {errors.startDate && <p className="text-xs text-red-600 mt-1">{errors.startDate}</p>}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Renewal Date *</label>
-            <input
-              type="date"
-              value={renewalDate}
-              onChange={(e) => setRenewalDate(e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg text-sm bg-white ${
-                errors.renewalDate ? 'border-red-500' : 'border-slate-300'
-              }`}
-            />
-            {errors.renewalDate && (
-              <p className="text-xs text-red-600 mt-1">{errors.renewalDate}</p>
+            {errors.title && (
+              <p id="obligation-title-error" className="feedback-error mt-1">
+                {errors.title}
+              </p>
             )}
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">
-              Notice Period (Days) *
+            <label htmlFor="obligation-vendorName" className="field-label">
+              Vendor / provider
             </label>
             <input
+              id="obligation-vendorName"
+              type="text"
+              value={vendorName}
+              onChange={(e) => setVendorName(e.target.value)}
+              placeholder="e.g. Google LLC"
+              className="field"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="obligation-type" className="field-label">
+              Type <span aria-hidden="true">*</span>
+            </label>
+            <select
+              id="obligation-type"
+              value={type}
+              onChange={(e) => setType(e.target.value as ObligationType)}
+              required
+              className="field"
+            >
+              <option value="subscription">Subscription</option>
+              <option value="contract">Contract</option>
+              <option value="license">License</option>
+              <option value="permit">Permit</option>
+              <option value="insurance">Insurance</option>
+              <option value="warranty">Warranty</option>
+              <option value="vendor_agreement">Vendor Agreement</option>
+              <option value="lease">Lease</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset disabled={readOnly} className="space-y-4 border-t border-slate-200 pt-5">
+        <legend className="section-heading">Financial details</legend>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <label htmlFor="obligation-amount" className="field-label">
+              Amount <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="obligation-amount"
+              type="number"
+              step="0.01"
+              min="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              required
+              aria-invalid={errors.amount ? true : undefined}
+              aria-describedby={errors.amount ? 'obligation-amount-error' : undefined}
+              className="field"
+            />
+            {errors.amount && (
+              <p id="obligation-amount-error" className="feedback-error mt-1">
+                {errors.amount}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="obligation-currency" className="field-label">
+              Currency <span aria-hidden="true">*</span>
+            </label>
+            <select
+              id="obligation-currency"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              required
+              className="field"
+            >
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+              <option value="CAD">CAD ($)</option>
+              <option value="AUD">AUD ($)</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="obligation-billingFrequency" className="field-label">
+              Billing frequency <span aria-hidden="true">*</span>
+            </label>
+            <select
+              id="obligation-billingFrequency"
+              value={billingFrequency}
+              onChange={(e) => setBillingFrequency(e.target.value as BillingFrequency)}
+              required
+              className="field"
+            >
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="annual">Annual</option>
+              <option value="biennial">Biennial (Every 2 years)</option>
+              <option value="one_time">One Time</option>
+            </select>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset disabled={readOnly} className="space-y-4 border-t border-slate-200 pt-5">
+        <legend className="section-heading">Dates &amp; notice</legend>
+        <div className="mt-3 grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="min-w-0">
+            <label htmlFor="obligation-startDate" className="field-label">
+              Start date <span className="muted">(optional)</span>
+            </label>
+            <input
+              id="obligation-startDate"
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              aria-invalid={errors.startDate ? true : undefined}
+              aria-describedby={errors.startDate ? 'obligation-startDate-error' : undefined}
+              className="field min-w-0 max-w-full"
+            />
+            {errors.startDate && (
+              <p id="obligation-startDate-error" className="feedback-error mt-1">
+                {errors.startDate}
+              </p>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <label htmlFor="obligation-renewalDate" className="field-label">
+              Renewal date <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="obligation-renewalDate"
+              type="date"
+              value={renewalDate}
+              onChange={(e) => setRenewalDate(e.target.value)}
+              required
+              aria-invalid={errors.renewalDate ? true : undefined}
+              aria-describedby={errors.renewalDate ? 'obligation-renewalDate-error' : undefined}
+              className="field min-w-0 max-w-full"
+            />
+            {errors.renewalDate && (
+              <p id="obligation-renewalDate-error" className="feedback-error mt-1">
+                {errors.renewalDate}
+              </p>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <label htmlFor="obligation-expirationDate" className="field-label">
+              Expiration date <span className="muted">(optional)</span>
+            </label>
+            <input
+              id="obligation-expirationDate"
+              type="date"
+              value={expirationDate}
+              onChange={(e) => setExpirationDate(e.target.value)}
+              aria-invalid={errors.expirationDate ? true : undefined}
+              aria-describedby={
+                errors.expirationDate ? 'obligation-expirationDate-error' : undefined
+              }
+              className="field min-w-0 max-w-full"
+            />
+            {errors.expirationDate && (
+              <p id="obligation-expirationDate-error" className="feedback-error mt-1">
+                {errors.expirationDate}
+              </p>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <label htmlFor="obligation-noticePeriodDays" className="field-label">
+              Notice period (days) <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="obligation-noticePeriodDays"
               type="number"
               min="0"
               max="365"
               value={noticePeriodDays}
               onChange={(e) => setNoticePeriodDays(parseInt(e.target.value, 10) || 0)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+              required
+              aria-invalid={errors.noticePeriodDays ? true : undefined}
+              aria-describedby={
+                errors.noticePeriodDays ? 'obligation-noticePeriodDays-error' : undefined
+              }
+              className="field"
             />
             {errors.noticePeriodDays && (
-              <p className="text-xs text-red-600 mt-1">{errors.noticePeriodDays}</p>
+              <p id="obligation-noticePeriodDays-error" className="feedback-error mt-1">
+                {errors.noticePeriodDays}
+              </p>
             )}
           </div>
         </div>
 
-        {/* Highlighted Live Calculated Cancellation Window */}
-        <div className="flex items-center justify-between p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
-          <div>
-            <span className="text-xs font-semibold uppercase tracking-wider text-indigo-700">
-              Calculated Cancellation Deadline
+        <div className="rounded-md border border-[#173e48]/20 bg-[#173e48]/[0.04] p-3">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#173e48]">
+                Calculated cancellation deadline
+              </p>
+              <p className="mt-0.5 text-sm text-slate-700" aria-live="polite">
+                {computedCancellationDeadline ? (
+                  <>
+                    Give notice by{' '}
+                    <strong className="font-semibold text-slate-950">
+                      {computedCancellationDeadline}
+                    </strong>
+                  </>
+                ) : (
+                  <span className="muted">Enter a renewal date and notice period</span>
+                )}
+              </p>
+            </div>
+            <span className="shrink-0 text-xs font-medium tabular-nums text-slate-600">
+              {noticePeriodDays} days before renewal
             </span>
-            <p className="text-sm font-medium text-indigo-950 mt-0.5">
-              {computedCancellationDeadline ? (
-                <>
-                  Must give notice by <strong>{computedCancellationDeadline}</strong>
-                </>
-              ) : (
-                <span className="text-slate-500 italic">Enter renewal date and notice period</span>
-              )}
-            </p>
           </div>
-          <span className="text-xs text-indigo-600 font-mono">
-            {noticePeriodDays} days before renewal
-          </span>
         </div>
+      </fieldset>
 
-        <div className="flex items-center space-x-2 pt-2">
+      <fieldset disabled={readOnly} className="space-y-4 border-t border-slate-200 pt-5">
+        <legend className="section-heading">Renewal settings &amp; notes</legend>
+        <div className="mt-3 flex items-start gap-2">
           <input
+            id="obligation-autoRenew"
             type="checkbox"
-            id="autoRenew"
             checked={autoRenew}
             onChange={(e) => setAutoRenew(e.target.checked)}
-            className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#173e48] focus:ring-[#173e48]"
           />
-          <label htmlFor="autoRenew" className="text-sm text-slate-700">
+          <label htmlFor="obligation-autoRenew" className="text-sm text-slate-700">
             This obligation automatically renews unless notice is given
           </label>
         </div>
-      </div>
 
-      {/* Tags & Notes */}
-      <div className="grid grid-cols-1 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Tags (comma-separated)
-          </label>
-          <input
-            type="text"
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            placeholder="e.g. saas, sales, finance"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-          />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="obligation-tags" className="field-label">
+              Tags
+            </label>
+            <input
+              id="obligation-tags"
+              type="text"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="e.g. saas, sales, finance"
+              aria-describedby="obligation-tags-hint"
+              className="field"
+            />
+            <p id="obligation-tags-hint" className="muted mt-1 text-xs">
+              Separate tags with commas.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="obligation-notes" className="field-label">
+              Notes
+            </label>
+            <textarea
+              id="obligation-notes"
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Key clauses, account representative, contract number..."
+              className="field resize-y"
+            />
+          </div>
         </div>
+      </fieldset>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
-          <textarea
-            rows={3}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Key clauses, account representative, contract number..."
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-          />
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
+      <div className="form-actions flex justify-end gap-2">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            disabled={isLoading}
-            className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+            disabled={isSubmitting}
+            className="btn btn-secondary"
           >
-            Cancel
+            {readOnly ? 'Close' : 'Cancel'}
           </button>
         )}
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="px-6 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
-        >
-          {isLoading ? 'Saving...' : initialData ? 'Update Obligation' : 'Save & Track Obligation'}
-        </button>
+        {!readOnly && (
+          <button type="submit" disabled={isSubmitting} className="btn btn-primary">
+            {isSubmitting ? 'Saving...' : initialData ? 'Update obligation' : 'Save obligation'}
+          </button>
+        )}
       </div>
     </form>
   );

@@ -11,6 +11,7 @@ describe('Obligations API Contract Tests (User Story 1 & Task T014)', () => {
   const userId = '44444444-4444-4444-4444-444444444444';
   let sessionCookie: string;
   const inMemoryStore = new Map<string, Obligation>();
+  const vendorStore = new Map<string, { id: string; name: string }>();
 
   beforeAll(async () => {
     const token = SessionService.encryptSession({
@@ -31,12 +32,58 @@ describe('Obligations API Contract Tests (User Story 1 & Task T014)', () => {
             if (!item || item.organizationId !== organizationId || item.deletedAt) {
               return null;
             }
-            return item;
+            const vendor = item.vendorId ? vendorStore.get(item.vendorId) : undefined;
+            return vendor ? { ...item, vendorName: vendor.name } : item;
           },
-          async list(limit = 50, offset = 0) {
-            return Array.from(inMemoryStore.values())
-              .filter((i) => i.organizationId === organizationId && !i.deletedAt)
-              .slice(offset, offset + limit);
+          async list(filter = {}) {
+            const matches = Array.from(inMemoryStore.values()).filter((item) => {
+              if (item.organizationId !== organizationId || item.deletedAt) return false;
+              if (filter.type && item.type !== filter.type) return false;
+              if (filter.status && item.status !== filter.status) return false;
+              if (filter.riskLevel && item.riskLevel !== filter.riskLevel) return false;
+              if (filter.search) {
+                const vendorName = item.vendorId ? vendorStore.get(item.vendorId)?.name : undefined;
+                const searchable = [item.title, vendorName, ...(item.tags as string[])].join(' ');
+                if (!searchable.toLowerCase().includes(filter.search.toLowerCase())) return false;
+              }
+              return true;
+            });
+            const offset = filter.offset ?? 0;
+            const limit = filter.limit ?? 50;
+            return {
+              items: matches.slice(offset, offset + limit).map((item) => {
+                const vendor = item.vendorId ? vendorStore.get(item.vendorId) : undefined;
+                return vendor ? { ...item, vendorName: vendor.name } : item;
+              }),
+              total: matches.length,
+            };
+          },
+          async findOrCreateVendor(name: string) {
+            const existing = Array.from(vendorStore.values()).find(
+              (vendor) => vendor.name.toLowerCase() === name.toLowerCase(),
+            );
+            if (existing) {
+              return {
+                ...existing,
+                organizationId,
+                contactEmail: null,
+                website: null,
+                notes: null,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              };
+            }
+            const vendor = { id: crypto.randomUUID(), name };
+            vendorStore.set(vendor.id, vendor);
+            return {
+              ...vendor,
+              organizationId,
+              contactEmail: null,
+              website: null,
+              notes: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            };
           },
           async create(data) {
             const id = crypto.randomUUID();
@@ -155,6 +202,7 @@ describe('Obligations API Contract Tests (User Story 1 & Task T014)', () => {
       payload: {
         title: 'Google Workspace Enterprise',
         type: 'subscription',
+        vendorName: 'Google',
         amount: 2400,
         currency: 'USD',
         billingFrequency: 'annual',
@@ -172,6 +220,8 @@ describe('Obligations API Contract Tests (User Story 1 & Task T014)', () => {
     expect(body.title).toBe('Google Workspace Enterprise');
     expect(body.status).toBe('active');
     expect(body.cancellationDeadline).toBe('2026-10-16'); // 2026-11-15 - 30 days
+    expect(body.vendorName).toBe('Google');
+    expect(body.tags).toEqual(['saas', 'productivity']);
   });
 
   it('retrieves the created obligation by ID on GET /api/v1/obligations/:id', async () => {
@@ -183,6 +233,7 @@ describe('Obligations API Contract Tests (User Story 1 & Task T014)', () => {
       payload: {
         title: 'Datadog APM',
         type: 'subscription',
+        vendorName: 'Datadog',
         amount: 12000,
         currency: 'USD',
         billingFrequency: 'annual',
@@ -204,6 +255,7 @@ describe('Obligations API Contract Tests (User Story 1 & Task T014)', () => {
     expect(fetched.id).toBe(created.id);
     expect(fetched.title).toBe('Datadog APM');
     expect(fetched.cancellationDeadline).toBe('2026-10-02');
+    expect(fetched.vendorName).toBe('Datadog');
   });
 
   it('returns 404 for non-existent obligation ID', async () => {
@@ -223,6 +275,8 @@ describe('Obligations API Contract Tests (User Story 1 & Task T014)', () => {
       payload: {
         title: 'Zoom Rooms License',
         type: 'license',
+        vendorName: 'Zoom',
+        tags: ['video'],
         amount: 499,
         currency: 'USD',
         billingFrequency: 'annual',
@@ -240,6 +294,8 @@ describe('Obligations API Contract Tests (User Story 1 & Task T014)', () => {
       headers: { cookie: sessionCookie },
       payload: {
         noticePeriodDays: 45,
+        vendorName: 'Zoom Communications',
+        tags: ['video', 'renewal'],
       },
     });
 
@@ -248,6 +304,8 @@ describe('Obligations API Contract Tests (User Story 1 & Task T014)', () => {
     expect(updated.noticePeriodDays).toBe(45);
     expect(updated.cancellationDeadline).toBe('2026-09-16'); // 2026-10-31 - 45 days
     expect(updated.version).toBe(2);
+    expect(updated.vendorName).toBe('Zoom Communications');
+    expect(updated.tags).toEqual(['video', 'renewal']);
   });
 
   it('lists obligations with pagination on GET /api/v1/obligations', async () => {
@@ -262,6 +320,7 @@ describe('Obligations API Contract Tests (User Story 1 & Task T014)', () => {
     expect(Array.isArray(body.items)).toBe(true);
     expect(body.page).toBe(1);
     expect(body.limit).toBe(10);
+    expect(body.total).toBe(inMemoryStore.size);
   });
 
   it('soft deletes an obligation on DELETE /api/v1/obligations/:id', async () => {

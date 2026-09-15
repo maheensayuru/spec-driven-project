@@ -60,11 +60,12 @@ describe('Dashboard Latency & Aggregation Performance Benchmark (Task T039 & SC-
   const tenant: TenantContext = {
     organizationId: orgId,
     obligations: {
+      async findOrCreateVendor() { throw new Error('Unexpected vendor lookup in this test'); },
       async findById() {
         return null;
       },
-      async list(limit = 1000, offset = 0) {
-        return dataset.slice(offset, offset + limit);
+      async list({ limit = 1000, offset = 0 } = {}) {
+        return { items: dataset.slice(offset, offset + limit), total: dataset.length };
       },
       async create() {
         throw new Error();

@@ -32,11 +32,12 @@ describe('Audit Logging & Immutability (Constitution Principle VI & User Story 8
       tenantContextFactory: (organizationId: string) => ({
         organizationId,
         obligations: {
+          async findOrCreateVendor() { throw new Error('Unexpected vendor lookup in this test'); },
           async findById() {
             return null;
           },
           async list() {
-            return [];
+            return { items: [], total: 0 };
           },
           async create() {
             throw new Error();

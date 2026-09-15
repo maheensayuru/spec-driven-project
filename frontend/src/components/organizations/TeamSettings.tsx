@@ -1,7 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
+import { Clock3, LockKeyhole, Trash2, UserPlus } from 'lucide-react';
 import { UserRole } from '@renewalradar/shared';
+import { apiRequest } from '../../lib/api';
+import { useSession } from '../SessionProvider';
+import { Badge } from '../ui/Badge';
+import { Dialog } from '../ui/Dialog';
 
 export interface TeamMember {
   id: string;
@@ -12,263 +17,410 @@ export interface TeamMember {
   joinedAt: string;
 }
 
-export interface TeamSettingsProps {
-  initialMembers?: TeamMember[];
-  userRole?: UserRole;
+interface MembersResponse {
+  items: TeamMember[];
+  total: number;
 }
 
-export const TeamSettings: React.FC<TeamSettingsProps> = ({
-  initialMembers,
-  userRole = 'owner',
-}) => {
-  const [members, setMembers] = useState<TeamMember[]>(
-    initialMembers ?? [
-      {
-        id: 'mem-1',
-        userId: 'user-1',
-        email: 'sarah.jenkins@acmelogistics.com',
-        fullName: 'Sarah Jenkins',
-        role: 'owner',
-        joinedAt: '2026-08-15T09:00:00Z',
-      },
-      {
-        id: 'mem-2',
-        userId: 'user-2',
-        email: 'dave.finance@acmelogistics.com',
-        fullName: 'Dave Miller',
-        role: 'admin',
-        joinedAt: '2026-08-20T11:30:00Z',
-      },
-      {
-        id: 'mem-3',
-        userId: 'user-3',
-        email: 'alex.ops@acmelogistics.com',
-        fullName: 'Alex Chen',
-        role: 'member',
-        joinedAt: '2026-09-01T14:15:00Z',
-      },
-    ],
-  );
+interface CreatedInvitation {
+  id: string;
+  email: string;
+  role: 'admin' | 'member' | 'viewer';
+  token: string;
+  expiresAt: string;
+}
 
+type InviteFeedback =
+  { tone: 'success'; message: string } | { tone: 'error'; message: string } | null;
+
+const roleGuidance: Array<{
+  role: UserRole;
+  summary: string;
+  restrictions: string;
+}> = [
+  {
+    role: 'owner',
+    summary: 'Full organization and billing control.',
+    restrictions: 'Protected account; cannot be removed here.',
+  },
+  {
+    role: 'admin',
+    summary: 'Invites teammates and manages obligations.',
+    restrictions: 'Cannot remove or replace the owner.',
+  },
+  {
+    role: 'member',
+    summary: 'Creates and edits obligations.',
+    restrictions: 'Cannot invite or manage teammates.',
+  },
+  {
+    role: 'viewer',
+    summary: 'Reviews obligations and alerts.',
+    restrictions: 'Read-only; cannot create or edit.',
+  },
+];
+
+const roleTone: Record<UserRole, 'neutral' | 'info' | 'success'> = {
+  owner: 'info',
+  admin: 'success',
+  member: 'neutral',
+  viewer: 'neutral',
+};
+
+const memberDateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
+export const TeamSettings: React.FC = () => {
+  const { session } = useSession();
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState<CreatedInvitation[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [reloadMembers, setReloadMembers] = useState(0);
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'admin' | 'member' | 'viewer'>('viewer');
-  const [inviteStatus, setInviteStatus] = useState<string | null>(null);
+  const [inviteFeedback, setInviteFeedback] = useState<InviteFeedback>(null);
   const [lastInviteLink, setLastInviteLink] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const emailId = useId();
+  const roleId = useId();
 
-  const canInvite = userRole === 'owner' || userRole === 'admin';
+  const userRole = session?.role;
+  const canManageTeam = userRole === 'owner' || userRole === 'admin';
 
-  const handleSendInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inviteEmail.trim()) return;
+  useEffect(() => {
+    const controller = new AbortController();
+    setIsLoadingMembers(true);
+    setMembersError(null);
+
+    apiRequest<MembersResponse>('/organizations/members', { signal: controller.signal })
+      .then((response) => {
+        setMembers(response.items);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setMembersError(
+          error instanceof Error ? error.message : 'Team members could not be loaded.',
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingMembers(false);
+      });
+
+    return () => controller.abort();
+  }, [reloadMembers]);
+
+  const handleSendInvite = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!inviteEmail.trim() || !canManageTeam) return;
 
     setIsSubmitting(true);
-    setInviteStatus(null);
+    setInviteFeedback(null);
     setLastInviteLink(null);
 
     try {
-      // In full client-server mode, calls POST /api/v1/organizations/invitations
-      const generatedToken = `inv_${Math.random().toString(36).substring(2, 10)}${Date.now()}`;
-      const mockInviteLink = `${window.location.origin}/invite/accept?token=${generatedToken}`;
+      const invitation = await apiRequest<CreatedInvitation>('/organizations/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteEmail.trim().toLowerCase(),
+          role: inviteRole,
+        }),
+      });
+      const inviteLink = `${window.location.origin}/invite/accept?token=${encodeURIComponent(invitation.token)}`;
 
-      // Add as pending/simulated viewer for immediate demo visibility
-      const newMember: TeamMember = {
-        id: `mem-${Date.now()}`,
-        userId: `usr-${Date.now()}`,
-        email: inviteEmail.trim().toLowerCase(),
-        fullName: inviteEmail.split('@')[0] ?? 'Invited Member',
-        role: inviteRole,
-        joinedAt: new Date().toISOString(),
-      };
-
-      setMembers((prev) => [...prev, newMember]);
-      setLastInviteLink(mockInviteLink);
-      setInviteStatus(`Invitation generated for ${inviteEmail} as ${inviteRole.toUpperCase()}`);
+      setPendingInvitations((previous) => [
+        ...previous.filter((item) => item.id !== invitation.id),
+        invitation,
+      ]);
+      setLastInviteLink(inviteLink);
+      setInviteFeedback({
+        tone: 'success',
+        message: `Invitation created for ${invitation.email}. Share the link below securely.`,
+      });
       setInviteEmail('');
-    } catch {
-      setInviteStatus('Failed to send invitation');
+    } catch (error: unknown) {
+      setInviteFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'The invitation could not be created.',
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleRemoveMember = (memberId: string, memberRole: UserRole) => {
-    if (memberRole === 'owner') {
-      alert('Cannot remove the organization owner');
-      return;
-    }
+  const handleRemoveMember = async (member: TeamMember) => {
+    if (member.role === 'owner' || !canManageTeam) return;
+    if (!window.confirm(`Remove ${member.fullName} from this organization?`)) return;
 
-    if (confirm('Are you sure you want to remove this member?')) {
-      setMembers((prev) => prev.filter((m) => m.id !== memberId));
-    }
-  };
-
-  const getRoleBadgeClass = (role: UserRole) => {
-    switch (role) {
-      case 'owner':
-        return 'bg-purple-100 text-purple-800 border-purple-200';
-      case 'admin':
-        return 'bg-indigo-100 text-indigo-800 border-indigo-200';
-      case 'member':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'viewer':
-        return 'bg-slate-100 text-slate-800 border-slate-200';
-      default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
+    setRemovingUserId(member.userId);
+    setMembersError(null);
+    try {
+      await apiRequest<void>(`/organizations/members/${encodeURIComponent(member.userId)}`, {
+        method: 'DELETE',
+      });
+      setMembers((previous) => previous.filter((item) => item.userId !== member.userId));
+    } catch (error: unknown) {
+      setMembersError(
+        error instanceof Error ? error.message : 'The team member could not be removed.',
+      );
+    } finally {
+      setRemovingUserId(null);
     }
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900">Team Members & Permissions</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Manage organization members and assign role-based access control (RBAC).
-          </p>
-        </div>
-
-        {canInvite && (
-          <button
-            onClick={() => setIsInviteOpen(!isInviteOpen)}
-            className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
-          >
-            {isInviteOpen ? 'Close Invite Form' : '+ Invite Member'}
-          </button>
-        )}
-      </div>
-
-      {/* Role Definitions Help Strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 bg-slate-50 rounded-lg text-xs border border-slate-200">
-        <div>
-          <span className="font-semibold text-purple-700 block">Owner</span>
-          Full administrative access, billing, and member governance.
-        </div>
-        <div>
-          <span className="font-semibold text-indigo-700 block">Admin</span>
-          Can invite members, manage obligations, and view audit logs.
-        </div>
-        <div>
-          <span className="font-semibold text-blue-700 block">Member</span>
-          Can create and edit obligations. Cannot invite members.
-        </div>
-        <div>
-          <span className="font-semibold text-slate-700 block">Viewer</span>
-          Strictly read-only access. Cannot create or edit obligations.
-        </div>
-      </div>
-
-      {/* Invite Modal / Form Drawer */}
-      {isInviteOpen && canInvite && (
-        <form
-          onSubmit={handleSendInvite}
-          className="p-5 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-4"
-        >
-          <h3 className="text-sm font-bold text-indigo-950">Invite Team Member</h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-slate-700 mb-1">
-                Email Address *
-              </label>
-              <input
-                type="email"
-                required
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="colleague@company.com"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Role *</label>
-              <select
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value as 'admin' | 'member' | 'viewer')}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              >
-                <option value="viewer">Viewer (Read-only)</option>
-                <option value="member">Member (Can edit obligations)</option>
-                <option value="admin">Admin (Can invite and manage)</option>
-              </select>
-            </div>
+    <div className="space-y-6">
+      <section className="surface overflow-hidden" aria-labelledby="members-heading">
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div>
+            <h2 id="members-heading" className="section-heading">
+              Members
+            </h2>
+            <p className="muted mt-1 text-sm">
+              Review who can access this organization and what they are allowed to do.
+            </p>
           </div>
-
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-slate-500">
-              Invited user will receive a secure single-use token expiring in 7 days.
-            </span>
+          {canManageTeam && (
             <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
+              type="button"
+              className="btn btn-primary self-start sm:self-auto"
+              onClick={() => {
+                setInviteFeedback(null);
+                setLastInviteLink(null);
+                setIsInviteOpen(true);
+              }}
             >
-              {isSubmitting ? 'Sending...' : 'Send Invitation'}
+              <UserPlus aria-hidden="true" className="h-4 w-4" />
+              Invite member
+            </button>
+          )}
+        </div>
+
+        {userRole && !canManageTeam && (
+          <div className="mx-4 mt-4 flex gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 sm:mx-6">
+            <LockKeyhole aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+            <p className="text-sm text-slate-700">
+              Your {userRole} role has read-only access to team settings. Only owners and admins can
+              invite or remove teammates.
+            </p>
+          </div>
+        )}
+
+        {membersError && (
+          <div className="feedback-error m-4 sm:m-6" role="alert">
+            <p>{membersError}</p>
+            <button
+              type="button"
+              className="btn btn-secondary mt-3"
+              onClick={() => setReloadMembers((value) => value + 1)}
+            >
+              Try again
             </button>
           </div>
+        )}
 
-          {inviteStatus && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
-              {inviteStatus}
-              {lastInviteLink && (
-                <div className="mt-1 font-mono text-[11px] text-slate-600 break-all select-all bg-white p-1.5 rounded border border-emerald-200">
-                  Demo Link: {lastInviteLink}
+        <div className="hidden grid-cols-[minmax(0,1.7fr)_8rem_8rem_6rem] gap-4 border-b border-slate-200 bg-slate-50 px-6 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 md:grid">
+          <span>Member</span>
+          <span>Role</span>
+          <span>Joined</span>
+          <span className="text-right">Access</span>
+        </div>
+        {isLoadingMembers ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-500 sm:px-6" role="status">
+            Loading team members…
+          </p>
+        ) : members.length === 0 && !membersError ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-500 sm:px-6">
+            No organization members were returned.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-200">
+            {members.map((member) => (
+              <div
+                key={member.id}
+                className="grid gap-4 px-4 py-4 md:grid-cols-[minmax(0,1.7fr)_8rem_8rem_6rem] md:items-center md:px-6"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{member.fullName}</p>
+                  <p className="mt-0.5 break-all text-sm text-slate-500">{member.email}</p>
                 </div>
+                <div className="flex items-center justify-between gap-3 md:block">
+                  <span className="text-xs font-medium text-slate-500 md:hidden">Role</span>
+                  <Badge tone={roleTone[member.role]}>{member.role}</Badge>
+                </div>
+                <div className="flex items-center justify-between gap-3 text-sm text-slate-600 md:block">
+                  <span className="text-xs font-medium text-slate-500 md:hidden">Joined</span>
+                  <time dateTime={member.joinedAt}>
+                    {memberDateFormatter.format(new Date(member.joinedAt))}
+                  </time>
+                </div>
+                <div className="flex justify-end">
+                  {member.role === 'owner' ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500">
+                      <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5" />
+                      Protected
+                    </span>
+                  ) : canManageTeam ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleRemoveMember(member)}
+                      disabled={removingUserId === member.userId}
+                      className="btn btn-ghost text-red-700 hover:bg-red-50"
+                      aria-label={`Remove ${member.fullName}`}
+                    >
+                      <Trash2 aria-hidden="true" className="h-4 w-4" />
+                      {removingUserId === member.userId ? 'Removing…' : 'Remove'}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-500">Read only</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {pendingInvitations.length > 0 && (
+        <section className="surface overflow-hidden" aria-labelledby="pending-heading">
+          <div className="border-b border-slate-200 px-4 py-4 sm:px-6">
+            <h2 id="pending-heading" className="section-heading">
+              Invitations created this visit
+            </h2>
+            <p className="muted mt-1 text-sm">
+              The API does not provide invitation history. Only invitations created in this view
+              appear here.
+            </p>
+          </div>
+          <div className="divide-y divide-slate-200">
+            {pendingInvitations.map((invitation) => (
+              <div
+                key={invitation.id}
+                className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+              >
+                <div className="min-w-0">
+                  <p className="break-all text-sm font-semibold text-slate-900">
+                    {invitation.email}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                    <Clock3 aria-hidden="true" className="h-3.5 w-3.5" />
+                    Expires {memberDateFormatter.format(new Date(invitation.expiresAt))}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge tone="medium">Pending</Badge>
+                  <Badge tone={roleTone[invitation.role]}>{invitation.role}</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="surface p-4 sm:p-6" aria-labelledby="roles-heading">
+        <div>
+          <h2 id="roles-heading" className="section-heading">
+            Role guide
+          </h2>
+          <p className="muted mt-1 text-sm">
+            Permissions become more restricted from owner to viewer.
+          </p>
+        </div>
+        <dl className="mt-4 divide-y divide-slate-200 border-y border-slate-200">
+          {roleGuidance.map((item) => (
+            <div
+              key={item.role}
+              className="grid gap-2 py-4 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4"
+            >
+              <dt>
+                <Badge tone={roleTone[item.role]}>{item.role}</Badge>
+              </dt>
+              <dd className="text-sm text-slate-700">{item.summary}</dd>
+              <dd className="text-sm text-slate-500">{item.restrictions}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <Dialog
+        open={isInviteOpen && canManageTeam}
+        onClose={() => setIsInviteOpen(false)}
+        title="Invite a team member"
+        description="Create a secure invitation link and choose the access granted after acceptance."
+      >
+        <form onSubmit={handleSendInvite} className="space-y-5">
+          <div>
+            <label htmlFor={emailId} className="field-label">
+              Email address
+            </label>
+            <input
+              id={emailId}
+              type="email"
+              required
+              autoComplete="email"
+              value={inviteEmail}
+              onChange={(event) => setInviteEmail(event.target.value)}
+              placeholder="colleague@company.com"
+              className="field"
+            />
+          </div>
+          <div>
+            <label htmlFor={roleId} className="field-label">
+              Role
+            </label>
+            <select
+              id={roleId}
+              value={inviteRole}
+              onChange={(event) =>
+                setInviteRole(event.target.value as 'admin' | 'member' | 'viewer')
+              }
+              className="field"
+            >
+              <option value="viewer">Viewer — read-only</option>
+              <option value="member">Member — edit obligations</option>
+              <option value="admin">Admin — invite and manage</option>
+            </select>
+            <p className="muted mt-2 text-xs">
+              The invitation expires after seven days. Share the returned link directly with this
+              person.
+            </p>
+          </div>
+
+          {inviteFeedback && (
+            <div
+              className={inviteFeedback.tone === 'success' ? 'feedback-success' : 'feedback-error'}
+              role={inviteFeedback.tone === 'error' ? 'alert' : 'status'}
+            >
+              <p>{inviteFeedback.message}</p>
+              {lastInviteLink && (
+                <p className="mt-2 break-all font-mono text-xs select-all">
+                  Invitation link: {lastInviteLink}
+                </p>
               )}
             </div>
           )}
-        </form>
-      )}
 
-      {/* Members Table */}
-      <div className="border border-slate-200 rounded-xl overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50 text-xs font-semibold text-slate-600 uppercase tracking-wider border-b border-slate-200">
-              <th className="py-3 px-4">Member Name</th>
-              <th className="py-3 px-4">Email</th>
-              <th className="py-3 px-4">Role</th>
-              <th className="py-3 px-4">Joined Date</th>
-              <th className="py-3 px-4 text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-sm">
-            {members.map((member) => (
-              <tr key={member.id} className="hover:bg-slate-50/75 transition-colors">
-                <td className="py-3 px-4 font-medium text-slate-900">{member.fullName}</td>
-                <td className="py-3 px-4 text-slate-600 font-mono text-xs">{member.email}</td>
-                <td className="py-3 px-4">
-                  <span
-                    className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${getRoleBadgeClass(
-                      member.role,
-                    )}`}
-                  >
-                    {member.role}
-                  </span>
-                </td>
-                <td className="py-3 px-4 text-slate-500 text-xs">
-                  {new Date(member.joinedAt).toLocaleDateString()}
-                </td>
-                <td className="py-3 px-4 text-right">
-                  {member.role !== 'owner' && canInvite ? (
-                    <button
-                      onClick={() => handleRemoveMember(member.id, member.role)}
-                      className="text-xs text-red-600 hover:text-red-800 font-medium"
-                    >
-                      Remove
-                    </button>
-                  ) : (
-                    <span className="text-xs text-slate-400 italic">Primary</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsInviteOpen(false)}
+            >
+              Close
+            </button>
+            <button type="submit" disabled={isSubmitting} className="btn btn-primary">
+              {isSubmitting ? 'Creating…' : 'Create invitation'}
+            </button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 };

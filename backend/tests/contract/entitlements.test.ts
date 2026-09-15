@@ -22,12 +22,13 @@ describe('Entitlements API Contract Tests (User Story 7 & FR-025)', () => {
       tenantContextFactory: (organizationId: string) => ({
         organizationId,
         obligations: {
+          async findOrCreateVendor() { throw new Error('Unexpected vendor lookup in this test'); },
           async findById() {
             return null;
           },
           // Simulate 10 existing obligations (at Free plan cap)
           async list() {
-            return Array.from({ length: 10 }, (_, i) => ({
+            const items = Array.from({ length: 10 }, (_, i) => ({
               id: `obl-${i}`,
               organizationId,
               vendorId: null,
@@ -52,6 +53,7 @@ describe('Entitlements API Contract Tests (User Story 7 & FR-025)', () => {
               createdAt: new Date(),
               updatedAt: new Date(),
             }));
+            return { items, total: items.length };
           },
           async create() {
             throw new Error('Should not be reached when quota is exceeded');

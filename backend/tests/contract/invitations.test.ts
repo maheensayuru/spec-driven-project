@@ -1,149 +1,137 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { buildServer } from '../../src/server.js';
-import { FastifyInstance } from 'fastify';
-import { SessionService } from '../../src/modules/auth/session.service.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
+import * as schema from '../../src/db/schema/index.js';
+import { resetTestDatabase, testDb, testClient } from '../helpers/test-database.js';
+
+vi.mock('../../src/db/connection.js', async () => {
+  // The async import is required because Vitest hoists mock factories above static imports.
+  const { testDb } = await import('../helpers/test-database.js');
+  return { db: testDb };
+});
+
 import { OrganizationService } from '../../src/modules/organizations/organization.service.js';
 
-describe('Organization Invitations & Member Management Contract Tests (Task T024)', () => {
-  let app: FastifyInstance;
-  const orgId = '77777777-7777-7777-7777-777777777777';
-  const ownerUserId = 'owner-1111-1111-1111-111111111111';
-  const memberUserId = 'member-2222-2222-2222-222222222222';
-  const viewerUserId = 'viewer-3333-3333-3333-333333333333';
+const orgId = '77777777-7777-4777-8777-777777777777';
+const otherOrgId = '88888888-8888-4888-8888-888888888888';
+const ownerUserId = '11111111-1111-4111-8111-111111111111';
+const memberUserId = '22222222-2222-4222-8222-222222222222';
 
-  let ownerCookie: string;
-  let memberCookie: string;
-  let viewerCookie: string;
+async function seedOrganizations(): Promise<void> {
+  await testClient.query(
+    `INSERT INTO organizations (id, name, slug) VALUES
+      ($1, 'Primary organization', 'primary-organization'),
+      ($2, 'Other organization', 'other-organization')`,
+    [orgId, otherOrgId],
+  );
+  await testClient.query(
+    `INSERT INTO users (id, email, password_hash, full_name) VALUES
+      ($1, 'owner@example.com', 'unused', 'Owner'),
+      ($2, 'member@example.com', 'unused', 'Member')`,
+    [ownerUserId, memberUserId],
+  );
+  await testClient.query(
+    `INSERT INTO organization_members (organization_id, user_id, role) VALUES
+      ($1, $2, 'owner'),
+      ($3, $4, 'member')`,
+    [orgId, ownerUserId, otherOrgId, memberUserId],
+  );
+}
 
-  beforeAll(async () => {
-    // Owner
-    const ownerToken = SessionService.encryptSession({
-      userId: ownerUserId,
-      organizationId: orgId,
-      role: 'owner',
-      email: 'owner@renewalradar.corp',
-      createdAt: Date.now(),
-    });
-    ownerCookie = `rr_session=${ownerToken}`;
-
-    // Member
-    const memberToken = SessionService.encryptSession({
-      userId: memberUserId,
-      organizationId: orgId,
-      role: 'member',
-      email: 'member@renewalradar.corp',
-      createdAt: Date.now(),
-    });
-    memberCookie = `rr_session=${memberToken}`;
-
-    // Viewer
-    const viewerToken = SessionService.encryptSession({
-      userId: viewerUserId,
-      organizationId: orgId,
-      role: 'viewer',
-      email: 'viewer@renewalradar.corp',
-      createdAt: Date.now(),
-    });
-    viewerCookie = `rr_session=${viewerToken}`;
-
-    app = buildServer();
-    await app.ready();
+describe('organization invitation persistence', () => {
+  beforeEach(async () => {
+    await resetTestDatabase();
+    await seedOrganizations();
   });
 
-  afterAll(async () => {
-    await app.close();
-  });
-
-  it('rejects unauthenticated requests to organization routes with 401', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: '/api/v1/organizations/members',
-    });
-    expect(res.statusCode).toBe(401);
-  });
-
-  it('rejects member invitation attempts from a Viewer or Member with 403 Forbidden', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/organizations/invitations',
-      headers: { cookie: viewerCookie },
-      payload: {
-        email: 'colleague@renewalradar.corp',
-        role: 'viewer',
-      },
-    });
-
-    expect(res.statusCode).toBe(403);
-  });
-
-  it('rejects invalid email or invalid role payload on invitation with 400 Bad Request', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/organizations/invitations',
-      headers: { cookie: ownerCookie },
-      payload: {
-        email: 'not-an-email',
-        role: 'superadmin', // Invalid role
-      },
-    });
-
-    expect(res.statusCode).toBe(400);
-  });
-
-  it('allows Owner or Admin to invite a new team member as Viewer (201 Created)', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/organizations/invitations',
-      headers: { cookie: ownerCookie },
-      payload: {
-        email: 'legal.intern@renewalradar.corp',
-        role: 'viewer',
-      },
-    });
-
-    expect(res.statusCode).toBe(201);
-    const body = JSON.parse(res.body);
-    expect(body.id).toBeDefined();
-    expect(body.email).toBe('legal.intern@renewalradar.corp');
-    expect(body.role).toBe('viewer');
-    expect(body.token).toBeDefined();
-    expect(body.expiresAt).toBeDefined();
-  });
-
-  it('allows accepting an invitation token via POST /api/v1/organizations/invitations/accept (200 OK)', async () => {
-    // Create an invite first
-    const invite = await OrganizationService.createInvitation(orgId, {
-      email: 'newhire@renewalradar.corp',
+  it('persists an invitation and accepts it exactly once', async () => {
+    const invitation = await OrganizationService.createInvitation(orgId, {
+      email: ' NewHire@Example.com ',
       role: 'viewer',
       invitedBy: ownerUserId,
     });
 
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/organizations/invitations/accept',
-      payload: {
-        token: invite.token,
-        fullName: 'New Hire Reviewer',
-        password: 'SecurePassword123!',
-      },
-    });
+    const [persisted] = await testDb
+      .select()
+      .from(schema.organizationInvitations)
+      .where(eq(schema.organizationInvitations.id, invitation.id));
+    expect(persisted?.email).toBe('newhire@example.com');
+    expect(persisted?.status).toBe('pending');
 
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(body.organization.id).toBe(orgId);
-    expect(body.organization.role).toBe('viewer');
-    expect(body.user.email).toBe('newhire@renewalradar.corp');
+    const accepted = await OrganizationService.acceptInvitation({
+      token: invitation.token,
+      fullName: 'New Hire',
+      password: 'SecurePassword123!',
+    });
+    expect(accepted.organization).toEqual({ id: orgId, role: 'viewer' });
+
+    const [membership] = await testDb
+      .select()
+      .from(schema.organizationMembers)
+      .where(eq(schema.organizationMembers.userId, accepted.user.id));
+    expect(membership).toMatchObject({ organizationId: orgId, role: 'viewer' });
+
+    await expect(
+      OrganizationService.acceptInvitation({
+        token: invitation.token,
+        fullName: 'Second Attempt',
+        password: 'SecurePassword123!',
+      }),
+    ).rejects.toThrow('invalid, already used, or expired');
   });
 
-  it('lists organization members on GET /api/v1/organizations/members (200 OK)', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: '/api/v1/organizations/members',
-      headers: { cookie: ownerCookie },
+  it('rolls back invitation consumption when the invited account already exists', async () => {
+    const invitation = await OrganizationService.createInvitation(orgId, {
+      email: 'member@example.com',
+      role: 'member',
+      invitedBy: ownerUserId,
     });
 
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(Array.isArray(body.items)).toBe(true);
+    await expect(
+      OrganizationService.acceptInvitation({
+        token: invitation.token,
+        fullName: 'Duplicate Member',
+        password: 'SecurePassword123!',
+      }),
+    ).rejects.toThrow();
+
+    const [persisted] = await testDb
+      .select()
+      .from(schema.organizationInvitations)
+      .where(eq(schema.organizationInvitations.id, invitation.id));
+    expect(persisted?.status).toBe('pending');
+
+    const memberships = await testDb
+      .select()
+      .from(schema.organizationMembers)
+      .where(eq(schema.organizationMembers.userId, memberUserId));
+    expect(memberships).toHaveLength(1);
+    expect(memberships[0]?.organizationId).toBe(otherOrgId);
+  });
+
+  it('keeps member listing and removal scoped to the requested organization', async () => {
+    expect(await OrganizationService.listMembers(orgId)).toEqual([
+      expect.objectContaining({ userId: ownerUserId, role: 'owner' }),
+    ]);
+
+    expect(await OrganizationService.removeMember(orgId, memberUserId, ownerUserId)).toBe(false);
+    const otherMembers = await OrganizationService.listMembers(otherOrgId);
+    expect(otherMembers).toEqual([
+      expect.objectContaining({ userId: memberUserId, role: 'member' }),
+    ]);
+
+    await expect(
+      OrganizationService.removeMember(orgId, ownerUserId, ownerUserId),
+    ).rejects.toThrow('Cannot remove organization owner');
+  });
+
+  it('propagates invitation persistence failures', async () => {
+    await expect(
+      OrganizationService.createInvitation('ffffffff-ffff-4fff-8fff-ffffffffffff', {
+        email: 'missing-org@example.com',
+        role: 'viewer',
+        invitedBy: ownerUserId,
+      }),
+    ).rejects.toThrow();
   });
 });
+

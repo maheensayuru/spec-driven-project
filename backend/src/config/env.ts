@@ -1,7 +1,18 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'node:url';
 
-dotenv.config();
+// Process variables win; workspace overrides root, and local files override shared files.
+const mode = process.env.NODE_ENV ?? 'development';
+dotenv.config({
+  path: [
+    ...['../../', '../../../'].flatMap((base) =>
+      [`.env.${mode}.local`, '.env.local', `.env.${mode}`, '.env'].map((name) =>
+        fileURLToPath(new URL(`${base}${name}`, import.meta.url)),
+      ),
+    ),
+  ],
+});
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -14,7 +25,9 @@ const EnvSchema = z.object({
     .default('renewalradar_super_secure_session_secret_32_bytes_min'),
   DATABASE_URL: z
     .string()
-    .default('postgresql://renewalradar:local_dev_password@localhost:5432/renewalradar_dev'),
+    .default('postgresql://renewalradar:local_dev_password@localhost:5433/renewalradar_dev'),
+  DATABASE_MODE: z.enum(['auto', 'postgres', 'pglite']).default('auto'),
+  PGLITE_DATA_DIR: z.string().default(fileURLToPath(new URL('../../.data/postgres', import.meta.url))),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   S3_ENDPOINT: z.string().default('http://localhost:9000'),
   S3_REGION: z.string().default('us-east-1'),

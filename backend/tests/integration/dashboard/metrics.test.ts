@@ -14,15 +14,15 @@ function createMockTenant(orgId: string, initialObligations: Obligation[] = []):
   }
 
   const obligations: TenantObligationsContext = {
+    async findOrCreateVendor() { throw new Error('Unexpected vendor lookup in this test'); },
     async findById(id: string) {
       const item = store.get(id);
       if (!item || item.organizationId !== orgId || item.deletedAt) return null;
       return item;
     },
-    async list(limit = 500, offset = 0) {
-      return Array.from(store.values())
-        .filter((o) => o.organizationId === orgId && !o.deletedAt)
-        .slice(offset, offset + limit);
+    async list({ limit = 500, offset = 0 } = {}) {
+      const items = Array.from(store.values()).filter((o) => o.organizationId === orgId && !o.deletedAt);
+      return { items: items.slice(offset, offset + limit), total: items.length };
     },
     async create(data) {
       const id = `obl-${Date.now()}`;

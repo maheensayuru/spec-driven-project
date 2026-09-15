@@ -1,7 +1,7 @@
 import { db } from '../../db/connection.js';
 import * as schema from '../../db/schema/index.js';
 import { eq, and, isNull } from 'drizzle-orm';
-import { Obligation } from '../../db/schema/obligations.js';
+import type { Obligation } from '../../db/schema/obligations.js';
 import { RiskEvaluationService } from './risk.service.js';
 
 export type Milestone = '90_day' | '60_day' | '30_day' | '14_day' | '7_day' | '1_day' | 'overdue';
@@ -152,67 +152,58 @@ export class DeadlineScannerService {
   ): Promise<{ scanned: number; alertsCreated: number }> {
     const refDate = referenceDateStr ?? new Date().toISOString().split('T')[0] ?? '2026-09-05';
 
-    try {
-      const conditions = [
-        eq(schema.obligations.status, 'active'),
-        isNull(schema.obligations.deletedAt),
-      ];
+    const conditions = [
+      eq(schema.obligations.status, 'active'),
+      isNull(schema.obligations.deletedAt),
+    ];
 
-      if (targetOrganizationId) {
-        conditions.push(eq(schema.obligations.organizationId, targetOrganizationId));
-      }
-
-      const activeObligations = await db
-        .select()
-        .from(schema.obligations)
-        .where(and(...conditions));
-
-      let alertsCreated = 0;
-
-      for (const obl of activeObligations) {
-        const evaluation = this.evaluateObligation(obl, refDate);
-        if (!evaluation) {
-          continue;
-        }
-
-        const idempotencyKey = this.generateIdempotencyKey(
-          obl.organizationId,
-          obl.id,
-          evaluation.milestone,
-          refDate,
-        );
-
-        // Insert with unique constraint protection (onConflictDoNothing)
-        const inserted = await db
-          .insert(schema.obligationAlerts)
-          .values({
-            organizationId: obl.organizationId,
-            obligationId: obl.id,
-            milestone: evaluation.milestone,
-            triggerDate: refDate,
-            priority: evaluation.priority,
-            idempotencyKey,
-            inAppDelivered: true,
-            emailDelivered: false,
-          })
-          .onConflictDoNothing({ target: schema.obligationAlerts.idempotencyKey })
-          .returning();
-
-        if (inserted.length > 0) {
-          alertsCreated++;
-        }
-      }
-
-      return {
-        scanned: activeObligations.length,
-        alertsCreated,
-      };
-    } catch {
-      // In hermetic test mode without PostgreSQL
-      return {
-        scanned: 0,
-        alertsCreated: 0,
-      };
+    if (targetOrganizationId) {
+      conditions.push(eq(schema.obligations.organizationId, targetOrganizationId));
     }
+
+    const activeObligations = await db
+      .select()
+      .from(schema.obligations)
+      .where(and(...conditions));
+
+    let alertsCreated = 0;
+
+    for (const obligation of activeObligations) {
+      const evaluation = this.evaluateObligation(obligation, refDate);
+      if (!evaluation) {
+        continue;
+      }
+
+      const idempotencyKey = this.generateIdempotencyKey(
+        obligation.organizationId,
+        obligation.id,
+        evaluation.milestone,
+        refDate,
+      );
+
+      const inserted = await db
+        .insert(schema.obligationAlerts)
+        .values({
+          organizationId: obligation.organizationId,
+          obligationId: obligation.id,
+          milestone: evaluation.milestone,
+          triggerDate: refDate,
+          priority: evaluation.priority,
+          idempotencyKey,
+          inAppDelivered: true,
+          emailDelivered: false,
+        })
+        .onConflictDoNothing({ target: schema.obligationAlerts.idempotencyKey })
+        .returning();
+
+      if (inserted.length > 0) {
+        alertsCreated++;
+      }
+    }
+
+    return {
+      scanned: activeObligations.length,
+      alertsCreated,
+    };
   }
 }
