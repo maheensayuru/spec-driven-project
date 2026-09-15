@@ -191,24 +191,37 @@ Document storage and provisional AI extraction holding table.
   - `id`: `UUID` PK
   - `organization_id`: `UUID` NOT NULL REFERENCES `organizations(id)` ON DELETE CASCADE
   - `obligation_id`: `UUID` NULL REFERENCES `obligations(id)` ON DELETE SET NULL
-  - `filename`: `VARCHAR(255)` NOT NULL
-  - `mime_type`: `VARCHAR(100)` NOT NULL
+  - `original_filename`: `VARCHAR(255)` NOT NULL
+  - `sanitized_filename`: `VARCHAR(255)` NOT NULL
+  - `declared_mime_type`: `VARCHAR(100)` NOT NULL
+  - `detected_mime_type`: `VARCHAR(100)` NULL
   - `file_size_bytes`: `BIGINT` NOT NULL
-  - `file_hash_sha256`: `CHAR(64)` NOT NULL
+  - `file_hash_sha256`: `CHAR(64)` NULL until upload finalization
   - `storage_path`: `VARCHAR(512)` NOT NULL
-  - `processing_status`: `VARCHAR(50)` NOT NULL DEFAULT `'uploaded'` (`uploaded`, `processing`, `extracted`, `verified`, `failed`)
+  - `processing_status`: `VARCHAR(50)` NOT NULL DEFAULT `'upload_pending'` (`upload_pending`, `uploaded`, `scan_pending`, `clean`, `blocked`, `processing`, `pending_review`, `confirmed`, `rejected`, `extraction_failed`)
+  - `security_status`: `VARCHAR(50)` NOT NULL DEFAULT `'scan_pending'` (`scan_pending`, `clean`, `blocked`)
+  - `failure_reason`: `TEXT` NULL
   - `uploaded_by`: `UUID` NOT NULL REFERENCES `users(id)`
+  - `uploaded_at`: `TIMESTAMPTZ` NULL
+  - `extraction_started_at`: `TIMESTAMPTZ` NULL
+  - `extraction_completed_at`: `TIMESTAMPTZ` NULL
   - `created_at`: `TIMESTAMPTZ` NOT NULL DEFAULT `NOW()`
+  - `updated_at`: `TIMESTAMPTZ` NOT NULL DEFAULT `NOW()`
 - **`extraction_stagings`**:
   - `id`: `UUID` PK
   - `document_id`: `UUID` NOT NULL REFERENCES `documents(id)` ON DELETE CASCADE
   - `organization_id`: `UUID` NOT NULL REFERENCES `organizations(id)` ON DELETE CASCADE
-  - `status`: `VARCHAR(50)` NOT NULL DEFAULT `'pending_review'` (`pending_review`, `confirmed`, `rejected`)
+  - `status`: `VARCHAR(50)` NOT NULL DEFAULT `'pending_review'` (`pending_review`, `confirmed`, `rejected`, `failed`)
   - `overall_confidence`: `REAL` NOT NULL DEFAULT 0.0
-  - `extracted_fields`: `JSONB` NOT NULL (Array of `{ field: string, value: any, confidence: number, page: number, snippet: string, confirmed_value: any }`)
+  - `extracted_fields`: `JSONB` NOT NULL (Array of `{ fieldName, extractedValue, confidence, sourcePage, sourceSnippet, correctedValue, correctedBy, correctedAt, requiresReview }`; `extractedValue` is the immutable provider suggestion)
+  - `provider`: `VARCHAR(50)` NOT NULL
+  - `provider_model`: `VARCHAR(255)` NOT NULL
+  - `provider_metadata`: `JSONB` NOT NULL
+  - `failure_reason`: `TEXT` NULL
   - `reviewed_by`: `UUID` NULL REFERENCES `users(id)`
   - `reviewed_at`: `TIMESTAMPTZ` NULL
   - `created_at`: `TIMESTAMPTZ` NOT NULL DEFAULT `NOW()`
+  - `updated_at`: `TIMESTAMPTZ` NOT NULL DEFAULT `NOW()`
 
 ### 2.5 `obligation_alerts` (Monitoring & Notifications)
 Idempotent notification event record.
